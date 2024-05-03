@@ -12,8 +12,12 @@ outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
 IncludeDir = {}
 IncludeDir["imgui"] = "3rd/imgui"
+IncludeDir["glfw"] = "3rd/glfw/include"
+IncludeDir["glad"] = "3rd/glad/include"
 
 include "3rd/imgui_premake.lua"
+include "3rd/glfw_premake.lua"
+include "3rd/glad_premake.lua"
 
 project "luaFSM"
     location "luaFSM"
@@ -26,10 +30,12 @@ project "luaFSM"
     objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
 
     pchheader "pch.h"
-    pchsource "src/tpch.cpp"
+    pchsource "%{prj.name}/src/pch.cpp"
 
     files
     {
+        "%{prj.name}/src/**.h",
+        "%{prj.name}/src/**.cpp",
         "src/**.h",
         "src/**.cpp",
     }
@@ -37,12 +43,19 @@ project "luaFSM"
     includedirs
     {
         "%{prj.name}/src",
+        "%{prj.name}/src",
+        "3rd/spdlog/include",
+        "3rd/zep/include",
         "%{IncludeDir.imgui}",
+        "%{IncludeDir.glad}",
+        "%{IncludeDir.glfw}",
     }
 
     links
     {
         "imgui",
+        "GLFW",
+        "glad",
     }
     filter "configurations:Debug"
         defines "LUAFSM_DEBUG"

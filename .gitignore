@@ -32,3 +32,6 @@
 *.app
 .idea/.idea.luaFSM/.idea/indexLayout.xml
 /.idea
+/3rd/bin-int
+/3rd/bin
+/bin-int

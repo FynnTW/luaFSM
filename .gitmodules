@@ -1,0 +1,12 @@
+[submodule "3rd/imgui"]
+	path = 3rd/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "3rd/glfw"]
+	path = 3rd/glfw
+	url = https://github.com/glfw/glfw
+[submodule "3rd/spdlog"]
+	path = 3rd/spdlog
+	url = https://github.com/gabime/spdlog
+[submodule "3rd/zep"]
+	path = 3rd/zep
+	url = https://github.com/Rezonality/zep
