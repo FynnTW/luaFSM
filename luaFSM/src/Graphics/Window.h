@@ -43,7 +43,11 @@ namespace LuaFsm
         void InitImGui();
         void BeginImGui();
         void OnImGuiRender();
+        static void DrawStateProperties(FsmState* state);
+        static void DrawTriggerProperties(FsmTrigger* trigger);
         void EndImGui();
+        static FsmPtr GetCurrentFsm() {return m_Fsm;}
+        static void SetCurrentFsm(const FsmPtr& fsm) { m_Fsm = fsm; }
         GLFWwindow* GetNativeWindow() const {return m_Window;}
         
 
@@ -57,7 +61,7 @@ namespace LuaFsm
             unsigned int width, height;
             bool vSync;
         } m_Data;
-        std::shared_ptr<Fsm> m_Fsm;
+        static std::shared_ptr<Fsm> m_Fsm;
         std::shared_ptr<NodeEditor> m_NodeEditor;
     
     };

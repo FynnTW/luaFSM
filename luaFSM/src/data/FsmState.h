@@ -4,10 +4,16 @@
 
 #include "FsmTrigger.h"
 #include "Fsm.h"
+#include "Graphics/MathHelpers.h"
+#include "Graphics/VisualNode.h"
+#include "imgui/NodeEditor.h"
+#include "imgui/TextEditor.h"
+#include "imgui/imnodes/imnodes.h"
 
 namespace LuaFsm
 {
     class Fsm;
+    class FsmTrigger;
     typedef std::shared_ptr<FsmTrigger> FsmTriggerPtr;
     typedef std::shared_ptr<Fsm> FsmPtr;
     class FsmState
@@ -21,9 +27,9 @@ namespace LuaFsm
         [[nodiscard]] std::string GetOnEnter() const { return m_OnEnter; }
         [[nodiscard]] std::string GetOnUpdate() const { return m_OnUpdate; }
         [[nodiscard]] std::string GetOnExit() const { return m_OnExit; }
-        [[nodiscard]] std::unordered_map<std::string, std::string> GetData() const { return m_Data; }
+        [[nodiscard]] std::unordered_map<std::string, std::string> GetData();
         [[nodiscard]] std::unordered_map<std::string, FsmTriggerPtr> GetTriggers() const { return m_Triggers; }
-        [[nodiscard]] std::shared_ptr<Fsm> GetFsm() const { return m_Fsm; }
+        [[nodiscard]] Fsm* GetFsm() const { return m_Fsm; }
         [[nodiscard]] std::vector<std::string> GetEvents() const { return m_Events; }
 
         void SetName(const std::string& name) { m_Name = name; }
@@ -35,42 +41,47 @@ namespace LuaFsm
         void SetOnExit(const std::string& onExit) { m_OnExit = onExit; }
         void AddData(const std::string& key, const std::string& value) { m_Data[key] = value; }
         void AddTrigger(const std::string& key, const FsmTriggerPtr& value);
+        FsmTriggerPtr AddTrigger(const std::string& key);
         void AddTrigger(const FsmTriggerPtr& value);
         FsmTriggerPtr GetTrigger(const std::string& key);
-        void SetFsm(const FsmPtr& fsm) { m_Fsm = fsm; }
+        void SetFsm(Fsm* fsm) { m_Fsm = fsm; }
         void AddEvent(const std::string& event) { m_Events.push_back(event); }
         void RemoveEvent(const std::string& event) { std::erase(m_Events, event); }
         void ClearEvents() { m_Events.clear(); }
         void ClearData() { m_Data.clear(); }
-        [[nodiscard]] int GetIntId() const { return m_IntId; }
-        void SetIntId(const int intId) { m_IntId = intId; }
-        [[nodiscard]] int GetInputId() const { return m_InputId; }
-        void SetInputId(const int inputId) { m_InputId = inputId; }
-        [[nodiscard]] int GetOutputId() const { return m_OutputId; }
-        void SetOutputId(const int outputId) { m_OutputId = outputId; }
         void ClearTriggers() { m_Triggers.clear(); }
-        void RemoveTrigger(const std::string& trigger) { m_Triggers.erase(trigger); }
+        void RemoveTrigger(const std::string& trigger);
         void RemoveData(const std::string& key) { m_Data.erase(key); }
-
+        std::string GetLuaCode(int indent = 0);
+        VisualNode* DrawStateNode(NodeEditor* editor);
+        [[nodiscard]] ImVec2 GetPosition() const { return m_Node.GetPosition(); }
+        void SetPosition(const ImVec2& position) { m_Node.SetPosition(position); }
+        VisualNode* DrawNode(NodeEditor* editor);
+        VisualNode* GetNode() { return &m_Node; }
+        TextEditor* GetOnInitEditor() { return &m_OnInitEditor; }
+        TextEditor* GetOnEnterEditor() { return &m_OnEnterEditor; }
+        TextEditor* GetOnUpdateEditor() { return &m_OnUpdateEditor; }
+        TextEditor* GetOnExitEditor() { return &m_OnExitEditor; }
+        
+        
+        
     private:
         std::string m_Name;
+        VisualNode m_Node{};
         std::string m_Id;
-        int m_IntId = -1;
-        int m_InputId = -1;
-        int m_OutputId = -1;
         std::string m_Description;
         std::string m_OnInit;
+        TextEditor m_OnInitEditor{};
         std::string m_OnEnter;
+        TextEditor m_OnEnterEditor{};
         std::string m_OnUpdate;
+        TextEditor m_OnUpdateEditor{};
         std::string m_OnExit;
+        TextEditor m_OnExitEditor{};
         std::unordered_map<std::string, std::string> m_Data{};
         std::unordered_map<std::string, std::shared_ptr<FsmTrigger>> m_Triggers{};
-        FsmPtr m_Fsm;
-        std::vector<std::string> m_Events;
-    };
-
-    class FsmStateNode
-    {
-        
+        std::vector<std::string> m_TriggersIds{};
+        Fsm* m_Fsm;
+        std::vector<std::string> m_Events{};
     };
 }

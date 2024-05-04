@@ -2,9 +2,15 @@
 #include <memory>
 #include <string>
 
+#include "FsmState.h"
+#include "imgui.h"
+#include "Graphics/VisualNode.h"
+#include "imgui/TextEditor.h"
+
 namespace LuaFsm
 {
     class FsmState;
+    class Fsm;
     typedef std::shared_ptr<FsmState> FsmStatePtr;
     class FsmTrigger
     {
@@ -19,8 +25,8 @@ namespace LuaFsm
         [[nodiscard]] const std::string& GetOnFalse() const { return m_OnFalse; }
         [[nodiscard]] const std::unordered_map<std::string, std::string>& GetArguments() const { return m_Arguments; }
         [[nodiscard]] const std::string& GetNextStateId() const { return m_NextStateId; }
-        [[nodiscard]] const FsmStatePtr& GetCurrentState() const { return m_CurrentState; }
-        [[nodiscard]] const FsmStatePtr& GetNextState() const { return m_NextState; }
+        [[nodiscard]] FsmState* GetCurrentState() const { return m_CurrentState; }
+        [[nodiscard]] FsmState* GetNextState() const { return m_NextState; }
         void SetName(const std::string& name) { m_Name = name; }
         void SetId(const std::string& id) { m_Id = id; }
         void SetDescription(const std::string& description) { m_Description = description; }
@@ -29,32 +35,37 @@ namespace LuaFsm
         void SetOnTrue(const std::string& onTrue) { m_OnTrue = onTrue; }
         void SetOnFalse(const std::string& onFalse) { m_OnFalse = onFalse; }
         void AddArgument(const std::string& key, const std::string& value) { m_Arguments[key] = value; }
-        void SetNextStateId(const std::string& nextStateId) { m_NextStateId = nextStateId; }
-        void SetCurrentState(const FsmStatePtr& currentState) { m_CurrentState = currentState; }
-        void SetNextState(const FsmStatePtr& nextState) { m_NextState = nextState; }
-        [[nodiscard]] int GetIntId() const { return m_IntId; }
-        void SetIntId(const int intId) { m_IntId = intId; }
-        [[nodiscard]] int GetInputId() const { return m_InputId; }
-        void SetInputId(const int inputId) { m_InputId = inputId; }
-        [[nodiscard]] int GetOutputId() const { return m_OutputId; }
-        void SetOutputId(const int outputId) { m_OutputId = outputId; }
-        std::string GetLuaCode();
+        void SetNextState(const std::string& stateId);
+        void SetCurrentState(const std::string& stateId);
+        void SetFsm(Fsm* fsm) { m_Fsm = fsm; }
+        [[nodiscard]] Fsm* GetFsm() const { return m_Fsm; }
+        std::string GetLuaCode(int indent = 0);
+        [[nodiscard]] ImVec2 GetPosition() const { return m_Node.GetPosition(); }
+        void SetPosition(const ImVec2& position) { m_Node.SetPosition(position); }
+        VisualNode* DrawNode(NodeEditor* editor);
+        VisualNode* GetNode() { return &m_Node; }
+        TextEditor* GetConditionEditor() { return &m_ConditionEditor; }
+        TextEditor* GetOnTrueEditor() { return &m_OnTrueEditor; }
+        TextEditor* GetOnFalseEditor() { return &m_OnFalseEditor; }
 
     private:
         std::string m_Name;
+        VisualNode m_Node{};
         std::string m_Id;
-        int m_IntId;
-        int m_InputId = -1;
-        int m_OutputId = -1;
         std::string m_Description;
         int m_Priority = 0;
-        std::string m_Condition;
+        std::string m_Condition = "return false";
+        TextEditor m_ConditionEditor{};
         std::string m_OnTrue;
+        TextEditor m_OnTrueEditor{};
         std::string m_OnFalse;
+        TextEditor m_OnFalseEditor{};
         std::unordered_map<std::string, std::string> m_Arguments{};
         std::string m_NextStateId;
-        FsmStatePtr m_CurrentState;
-        FsmStatePtr m_NextState;
+        std::string m_CurrentStateId;
+        FsmState* m_CurrentState = nullptr;
+        FsmState* m_NextState = nullptr;
+        Fsm* m_Fsm = nullptr;
     };
 
 }

@@ -136,7 +136,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="src\Graphics\MathHelpers.h" />
+    <ClInclude Include="src\Graphics\VisualNode.h" />
     <ClInclude Include="src\Graphics\Window.h" />
+    <ClInclude Include="src\imgui\imgui_stdlib.h" />
     <ClInclude Include="src\imgui\NodeEditor.h" />
     <ClInclude Include="src\imgui\TextEditor.h" />
     <ClInclude Include="src\Log.h" />
@@ -150,7 +153,10 @@
     <ClInclude Include="src\pch.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Graphics\MathHelpers.cpp" />
+    <ClCompile Include="src\Graphics\VisualNode.cpp" />
     <ClCompile Include="src\Graphics\Window.cpp" />
+    <ClCompile Include="src\imgui\imgui_stdlib.cpp" />
     <ClCompile Include="src\imgui\NodeEditor.cpp" />
     <ClCompile Include="src\imgui\TextEditor.cpp" />
     <ClCompile Include="src\Log.cpp" />
