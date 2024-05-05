@@ -136,7 +136,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="src\Graphics\MathHelpers.h" />
+    <ClInclude Include="src\data\DrawableObject.h" />
+    <ClInclude Include="src\Graphics\Math.h" />
     <ClInclude Include="src\Graphics\VisualNode.h" />
     <ClInclude Include="src\Graphics\Window.h" />
     <ClInclude Include="src\imgui\imgui_stdlib.h" />
@@ -153,7 +154,8 @@
     <ClInclude Include="src\pch.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\Graphics\MathHelpers.cpp" />
+    <ClCompile Include="src\data\DrawableObject.cpp" />
+    <ClCompile Include="src\Graphics\Math.cpp" />
     <ClCompile Include="src\Graphics\VisualNode.cpp" />
     <ClCompile Include="src\Graphics\Window.cpp" />
     <ClCompile Include="src\imgui\imgui_stdlib.cpp" />

@@ -4,11 +4,8 @@
 
 #include "FsmTrigger.h"
 #include "Fsm.h"
-#include "Graphics/MathHelpers.h"
 #include "Graphics/VisualNode.h"
-#include "imgui/NodeEditor.h"
 #include "imgui/TextEditor.h"
-#include "imgui/imnodes/imnodes.h"
 
 namespace LuaFsm
 {
@@ -16,24 +13,27 @@ namespace LuaFsm
     class FsmTrigger;
     typedef std::shared_ptr<FsmTrigger> FsmTriggerPtr;
     typedef std::shared_ptr<Fsm> FsmPtr;
-    class FsmState
+    class FsmState : DrawableObject
     {
     public:
-        FsmState(std::string id);
-        [[nodiscard]] std::string GetName() const { return m_Name; }
-        [[nodiscard]] std::string GetId() const { return m_Id; }
+        FsmState(const std::string& id);
         [[nodiscard]] std::string GetDescription() const { return m_Description; }
         [[nodiscard]] std::string GetOnInit() const { return m_OnInit; }
         [[nodiscard]] std::string GetOnEnter() const { return m_OnEnter; }
         [[nodiscard]] std::string GetOnUpdate() const { return m_OnUpdate; }
+        [[nodiscard]] std::vector<std::pair<std::string, std::string>> GetOnUpdateArguments() const { return m_OnUpdateArguments; }
         [[nodiscard]] std::string GetOnExit() const { return m_OnExit; }
         [[nodiscard]] std::unordered_map<std::string, std::string> GetData();
         [[nodiscard]] std::unordered_map<std::string, FsmTriggerPtr> GetTriggers() const { return m_Triggers; }
-        [[nodiscard]] Fsm* GetFsm() const { return m_Fsm; }
         [[nodiscard]] std::vector<std::string> GetEvents() const { return m_Events; }
 
-        void SetName(const std::string& name) { m_Name = name; }
-        void SetId(const std::string& id);
+        void AddOnUpdateArgument(const std::string& key, const std::string& value) { m_OnUpdateArguments.emplace_back(
+            key, value); }
+        void RemoveOnUpdateArgument(const std::string& key)
+        {
+            if (std::ranges::find_if(m_OnUpdateArguments, [key](const auto& pair) { return pair.first == key; }) != m_OnUpdateArguments.end())
+                m_OnUpdateArguments.erase(std::ranges::find_if(m_OnUpdateArguments, [key](const auto& pair) { return pair.first == key; }));
+        }
         void SetDescription(const std::string& description) { m_Description = description; }
         void SetOnInit(const std::string& onInit) { m_OnInit = onInit; }
         void SetOnEnter(const std::string& onEnter) { m_OnEnter = onEnter; }
@@ -42,33 +42,37 @@ namespace LuaFsm
         void AddData(const std::string& key, const std::string& value) { m_Data[key] = value; }
         void AddTrigger(const std::string& key, const FsmTriggerPtr& value);
         FsmTriggerPtr AddTrigger(const std::string& key);
+        [[nodiscard]] std::string MakeIdString(const std::string& name) const;
+        void DrawProperties();
         void AddTrigger(const FsmTriggerPtr& value);
         FsmTriggerPtr GetTrigger(const std::string& key);
-        void SetFsm(Fsm* fsm) { m_Fsm = fsm; }
         void AddEvent(const std::string& event) { m_Events.push_back(event); }
-        void RemoveEvent(const std::string& event) { std::erase(m_Events, event); }
+        void RemoveEvent(const std::string& event)
+        {
+            if (std::ranges::find(m_Events, event) != m_Events.end())
+                std::erase(m_Events, event);
+        }
         void ClearEvents() { m_Events.clear(); }
         void ClearData() { m_Data.clear(); }
         void ClearTriggers() { m_Triggers.clear(); }
         void RemoveTrigger(const std::string& trigger);
         void RemoveData(const std::string& key) { m_Data.erase(key); }
         std::string GetLuaCode(int indent = 0);
-        VisualNode* DrawStateNode(NodeEditor* editor);
-        [[nodiscard]] ImVec2 GetPosition() const { return m_Node.GetPosition(); }
-        void SetPosition(const ImVec2& position) { m_Node.SetPosition(position); }
-        VisualNode* DrawNode(NodeEditor* editor);
+        [[nodiscard]] ImVec2 GetPosition() { return m_Node.GetPosition(); }
+        VisualNode* DrawNode();
         VisualNode* GetNode() { return &m_Node; }
         TextEditor* GetOnInitEditor() { return &m_OnInitEditor; }
         TextEditor* GetOnEnterEditor() { return &m_OnEnterEditor; }
         TextEditor* GetOnUpdateEditor() { return &m_OnUpdateEditor; }
         TextEditor* GetOnExitEditor() { return &m_OnExitEditor; }
-        
-        
-        
+        [[nodiscard]] std::string GetName() const override { return m_Name; }
+        [[nodiscard]] std::string GetId() const override { return m_Id; }
+        void virtual SetName(const std::string& name) override { m_Name = name; }
+        void virtual SetId(const std::string& id) override;
+        void ChangeTriggerId(const std::string& oldId, const std::string& newId);
+
     private:
-        std::string m_Name;
         VisualNode m_Node{};
-        std::string m_Id;
         std::string m_Description;
         std::string m_OnInit;
         TextEditor m_OnInitEditor{};
@@ -76,12 +80,13 @@ namespace LuaFsm
         TextEditor m_OnEnterEditor{};
         std::string m_OnUpdate;
         TextEditor m_OnUpdateEditor{};
+        TextEditor m_LuaCodeEditor{};
+        std::vector<std::pair<std::string, std::string>> m_OnUpdateArguments{};
         std::string m_OnExit;
         TextEditor m_OnExitEditor{};
         std::unordered_map<std::string, std::string> m_Data{};
         std::unordered_map<std::string, std::shared_ptr<FsmTrigger>> m_Triggers{};
         std::vector<std::string> m_TriggersIds{};
-        Fsm* m_Fsm;
         std::vector<std::string> m_Events{};
     };
 }

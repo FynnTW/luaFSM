@@ -9,7 +9,7 @@ namespace LuaFsm
         Application();
         virtual ~Application();
 
-        void Run();
+        void Run() const;
         static Application* Get() { return m_SInstance; }
         Window* GetWindow() const { return m_Window.get(); }
         void Close() { m_Running = false; }

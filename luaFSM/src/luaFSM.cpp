@@ -1,11 +1,15 @@
 #include "pch.h"
 
 #include "luaFsm.h"
+#include "imgui/NodeEditor.h"
 
 int main(int argc, char* argv[])
 {
     const auto app = new LuaFsm::Application();
+    const auto editor = new LuaFsm::NodeEditor();
+    app->GetWindow()->InitImGui();
     app->Run();
+    delete editor;
     delete app;
     return 0;
 }
@@ -21,15 +25,12 @@ namespace LuaFsm
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_DEPTH_TEST);
         m_Window = std::make_shared<Window>("LuaFSM", 1280, 720);
-        m_Window->InitImGui();
     }
 
     Application::~Application()
-    {
-        
-    }
+    = default;
 
-    void Application::Run()
+    void Application::Run() const
     {
         while (m_Running)
         {

@@ -1,72 +1,104 @@
 ﻿#include "pch.h"
 #include "NodeEditor.h"
 
+#include "Graphics/Window.h"
+
 namespace LuaFsm
 {
-    int NodeEditor::AddNode(const std::string& name)
+
+    NodeEditor* NodeEditor::m_Instance = nullptr;
+    
+    NodeEditor::NodeEditor()
     {
-        return 0;
+        m_Instance = this;
     }
 
-    void NodeEditor::AddNode(VisualNode* node)
-    {
-        m_Nodes[node->GetId()] = node;
-    }
+    NodeEditor::~NodeEditor()
+    = default;
 
-    ImVec2 NodeEditor::GetNextNodePos()
+    ImVec2 NodeEditor::GetNextNodePos(VisualNode* node)
     {
-        if (m_LastNodePos.x < 1 && m_LastNodePos.y < 1)
-            m_LastNodePos = MathHelpers::AddVec2(m_CanvasPos, ImVec2(50, 100));
-        m_LastNodePos.x += m_NodeSize.x + m_NodeRadius * 2;
+        auto newPos = ImVec2(100, 0);
+        if (m_LastNode)
+            newPos = m_LastNodePos;
+            //m_LastNodePos = MathHelpers::AddVec2(m_CanvasPos, ImVec2(50, 100));
+        m_LastNodePos = newPos;
+        m_LastNodePos.x += node->GetSize().x + 50;
+        m_LastNodePos.y += node->GetSize().y + 25;
         if (m_LastNodePos.x > GetCanvasSize().x)
         {
             m_LastNodePos.x = 0;
-            m_LastNodePos.y += m_NodeSize.y + m_NodeRadius * 2;
+            m_LastNodePos.y += node->GetSize().y;
         }
-        return m_LastNodePos;
+        m_LastNode = node;
+        return newPos;
     }
 
-    ImVec2 Normalize(const ImVec2& vec)
+    ImVec2 normalize(const ImVec2& vec)
     {
-        float length = std::sqrt(vec.x * vec.x + vec.y * vec.y);
+        const float length = std::sqrt(vec.x * vec.x + vec.y * vec.y);
         if (length == 0.0f)
-            return ImVec2(0, 0);
-        return ImVec2(vec.x / length, vec.y / length);
+            return {0, 0};
+        return {vec.x / length, vec.y / length};
+    }
+
+    void NodeEditor::DrawLine(const ImVec2 fromPos, const ImVec2 toPos, const ImU32 color, const float thickness, const float arrowHeadWidth, const float arrowHeadLength)
+    {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImVec2 direction = Math::SubtractVec2(toPos, fromPos);
+        const ImVec2 normalizedDirection = normalize(direction);
+        const ImVec2 perpendicular(-normalizedDirection.y, normalizedDirection.x);
+        // Arrow parameters
+        const ImVec2 arrowTip = toPos;
+        const ImVec2 leftCorner = Math::AddVec2(
+            Math::SubtractVec2(
+            arrowTip,
+            Math::MultiplyVec2(normalizedDirection, arrowHeadLength)),
+            Math::MultiplyVec2(perpendicular, arrowHeadWidth));
+        const ImVec2 rightCorner = Math::SubtractVec2(
+            Math::SubtractVec2(
+            arrowTip,
+            Math::MultiplyVec2(normalizedDirection, arrowHeadLength)),
+            Math::MultiplyVec2(perpendicular, arrowHeadWidth));
+                        
+        drawList->AddLine(fromPos, toPos, color, thickness);
+        drawList->AddTriangleFilled(arrowTip, leftCorner, rightCorner, color);
     }
 
     void NodeEditor::DrawConnection(VisualNode* fromNode, VisualNode* toNode)
     {
-        auto fromPos = fromNode->GetFromPoint(toNode);
-        auto toPos = toNode->GetFromPoint(fromNode);
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        ImVec2 direction = MathHelpers::SubtractVec2(toPos, fromPos);
-        ImVec2 normalizedDirection = Normalize(direction);
-        ImVec2 perpendicular(-normalizedDirection.y, normalizedDirection.x);
-        // Arrow parameters
-        float arrowHeadLength = 15.0f;
-        float arrowHeadWidth = 10.0f;
-        ImVec2 arrowTip = toPos;
-        ImVec2 leftCorner = MathHelpers::AddVec2(
-            MathHelpers::SubtractVec2(
-            arrowTip,
-            MathHelpers::MultiplyVec2(normalizedDirection, arrowHeadLength)),
-            MathHelpers::MultiplyVec2(perpendicular, arrowHeadWidth));
-        ImVec2 rightCorner = MathHelpers::SubtractVec2(
-            MathHelpers::SubtractVec2(
-            arrowTip,
-            MathHelpers::MultiplyVec2(normalizedDirection, arrowHeadLength)),
-            MathHelpers::MultiplyVec2(perpendicular, arrowHeadWidth));
-                        
-        drawList->AddLine(fromPos, toPos, IM_COL32_WHITE, 2.0f);
-        drawList->AddTriangleFilled(arrowTip, leftCorner, rightCorner, IM_COL32_WHITE);
-        
+        const auto fromPos = fromNode->GetFromPoint(toNode);
+        const auto toPos = toNode->GetFromPoint(fromNode);
+        DrawLine(fromPos, toPos);
     }
 
     void NodeEditor::DeselectAllNodes()
     {
-        for (const auto& [key, value] : m_Nodes)
-            value->Deselect();
+        if (!m_Fsm)
+            return;
+        for (const auto& [key, state] : m_Fsm->GetStates())
+            state->GetNode()->Deselect();
+        for (const auto& [key, trigger] : m_Fsm->GetTriggers())
+            trigger->GetNode()->Deselect();
         m_SelectedNode = nullptr;
+    }
+
+    VisualNode* NodeEditor::GetNode(const std::string& id, const NodeType type) const
+    {
+        if (!m_Fsm)
+            return nullptr;
+        switch (type)
+        {
+        case NodeType::State:
+            if (m_Fsm->GetState(id))
+                return m_Fsm->GetState(id)->GetNode();
+            break;
+        case NodeType::Transition:
+            if (m_Fsm->GetTrigger(id))
+                return m_Fsm->GetTrigger(id)->GetNode();
+            break;
+        }
+        return nullptr;
     }
 
     void NodeEditor::SetSelectedNode(VisualNode* node)

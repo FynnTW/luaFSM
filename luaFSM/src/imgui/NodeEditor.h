@@ -1,58 +1,76 @@
 ﻿#pragma once
 #include "imgui.h"
+#include "data/Fsm.h"
 #include "Graphics/VisualNode.h"
 
 namespace LuaFsm
 {
-    class VisualNode;
+    class VisualNode; //forward declaration
+    class Fsm; //forward declaration
     class NodeEditor
     {
     public:
-        int AddNode(const std::string& name);
-        void AddNode(VisualNode* node);
-        [[nodiscard]] ImVec2 GetNodeSize() const { return m_NodeSize; }
-        void SetNodeSize(const ImVec2& size) { m_NodeSize = size; }
+        NodeEditor();
+        ~NodeEditor();
+
+        //Canvas position
+        [[nodiscard]] ImVec2 GetCanvasPos() const { return m_CanvasPos; }
+        void SetCanvasPos(const ImVec2& pos) { m_CanvasPos = pos; }
+
+        //Canvas size
+        [[nodiscard]] ImVec2 GetCanvasSize() const { return m_CanvasSize; }
+        void SetCanvasSize(const ImVec2& size) { m_CanvasSize = size; }
+
+        //Font
+        [[nodiscard]] ImFont* GetFont() const { return m_Font; }
+        void SetFont(ImFont* font) { m_Font = font; }
+
+        //Last node position
         [[nodiscard]] ImVec2 GetLastNodePos() const { return m_LastNodePos; }
         void SetLastNodePos(const ImVec2& pos) { m_LastNodePos = pos; }
-        [[nodiscard]] int GetLinkCount() const { return m_LinkCount; }
-        void IncrementLinkCount() { m_LinkCount++; }
-        void DecrementLinkCount() { m_LinkCount--; }
-        int AddLink() { return m_LinkCount++; }
-        void ClearLinkCount() { m_LinkCount = 0; }
-        [[nodiscard]] std::string GetLastNodeName() const { return m_LastNodeName; }
-        void SetLastNodeName(const std::string& name) { m_LastNodeName = name; }
-        [[nodiscard]] float GetNodeRadius() const { return m_NodeRadius; }
-        inline static uint32_t NodeWindowFlags = ImGuiWindowFlags_NoCollapse
+        ImVec2 GetNextNodePos(VisualNode* node);
+
+        //Selected nodes
+        [[nodiscard]] VisualNode* GetSelectedNode() const { return m_SelectedNode; }
+        void SetSelectedNode(VisualNode* node);
+        void DeselectAllNodes();
+
+        //Get node by id
+        VisualNode* GetNode(const std::string& id, NodeType type = NodeType::State) const;
+
+        //Draw lines
+        static void DrawLine(ImVec2 fromPos, ImVec2 toPos, ImU32 color = IM_COL32_WHITE, float thickness = 2.0f, float arrowHeadWidth= 10.0f,
+                             float arrowHeadLength= 15.0f);
+        static void DrawConnection(VisualNode* fromNode, VisualNode* toNode);
+
+        void SetCurrentFsm(const FsmPtr& fsm) { m_Fsm = fsm; }
+        [[nodiscard]] FsmPtr GetCurrentFsm() const { return m_Fsm; }
+
+        static NodeEditor* Get() { return m_Instance; }
+
+        [[nodiscard]] bool IsCreatingLink() const { return m_IsCreatingLink; }
+        void SetCreatingLink(const bool creatingLink) { m_IsCreatingLink = creatingLink; }
+        
+    public:
+        inline static uint32_t nodeWindowFlags = ImGuiWindowFlags_NoCollapse
             | ImGuiWindowFlags_NoDecoration
             | ImGuiWindowFlags_NoBackground
+            | ImGuiWindowFlags_NoFocusOnAppearing
             | ImGuiWindowFlags_NoDocking
             | ImGuiWindowFlags_NoResize
             | ImGuiWindowFlags_NoTitleBar;
-        ImVec2 GetNextNodePos();
-        void DrawConnection(VisualNode* fromNode, VisualNode* toNode);
-        void DeselectAllNodes();
-        void ClearNodes() { m_Nodes.clear(); }
-        [[nodiscard]] std::unordered_map<std::string, VisualNode*> GetNodes() const { return m_Nodes; }
-        VisualNode* GetNode(const std::string& id) { return m_Nodes[id]; }
-        void RemoveNode(const std::string& id) { m_Nodes.erase(id); }
-        [[nodiscard]] VisualNode* GetSelectedNode() const { return m_SelectedNode; }
-        void SetSelectedNode(VisualNode* node);
-        [[nodiscard]] ImVec2 GetCanvasPos() const { return m_CanvasPos; }
-        void SetCanvasPos(const ImVec2& pos) { m_CanvasPos = pos; }
-        [[nodiscard]] ImVec2 GetCanvasSize() const { return m_CanvasSize; }
-        void SetCanvasSize(const ImVec2& size) { m_CanvasSize = size; }
         
 
     private:
-        ImVec2 m_NodeSize{100, 100};
-        float m_NodeRadius = 60.0f;
         ImVec2 m_LastNodePos{0, 0};
-        int m_LinkCount = 0;
         ImVec2 m_CanvasPos{0, 0};
         ImVec2 m_CanvasSize{0, 0};
         VisualNode* m_SelectedNode = nullptr;
-        std::string m_LastNodeName;
-        std::unordered_map<std::string, VisualNode*> m_Nodes;
+        VisualNode* m_LastNode = nullptr;
+        ImFont* m_Font = nullptr;
+        bool m_IsCreatingLink = false;
+        FsmPtr m_Fsm = nullptr;
+        static NodeEditor* m_Instance;
         
     };
     
