@@ -78,11 +78,11 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>LUAFSM_DEBUG;THRYLOS_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>src;..\3rd\spdlog\include;..\3rd\zep\include;..\3rd\imgui;..\3rd\glad\include;..\3rd\glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>LUAFSM_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>src;..\3rd\spdlog\include;..\3rd\zep\include;..\3rd\imgui;..\3rd\glad\include;..\3rd\ImGuiFileDialog;..\3rd\glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
@@ -96,14 +96,14 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>LUAFSM_RELEASE;THRYLOS_RELEASE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>src;..\3rd\spdlog\include;..\3rd\zep\include;..\3rd\imgui;..\3rd\glad\include;..\3rd\glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>LUAFSM_RELEASE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>src;..\3rd\spdlog\include;..\3rd\zep\include;..\3rd\imgui;..\3rd\glad\include;..\3rd\ImGuiFileDialog;..\3rd\glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <MinimalRebuild>false</MinimalRebuild>
       <StringPooling>true</StringPooling>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
@@ -118,14 +118,14 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>LUAFSM_DIST;THRYLOS_DIST;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>src;..\3rd\spdlog\include;..\3rd\zep\include;..\3rd\imgui;..\3rd\glad\include;..\3rd\glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>LUAFSM_DIST;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>src;..\3rd\spdlog\include;..\3rd\zep\include;..\3rd\imgui;..\3rd\glad\include;..\3rd\ImGuiFileDialog;..\3rd\glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <MinimalRebuild>false</MinimalRebuild>
       <StringPooling>true</StringPooling>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
@@ -136,36 +136,44 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="src\data\DrawableObject.h" />
     <ClInclude Include="src\Graphics\Math.h" />
     <ClInclude Include="src\Graphics\VisualNode.h" />
     <ClInclude Include="src\Graphics\Window.h" />
-    <ClInclude Include="src\imgui\imgui_stdlib.h" />
-    <ClInclude Include="src\imgui\NodeEditor.h" />
-    <ClInclude Include="src\imgui\TextEditor.h" />
+    <ClInclude Include="src\Graphics\stb_image.h" />
+    <ClInclude Include="src\IO\FileReader.h" />
+    <ClInclude Include="src\IO\LuaParser.h" />
     <ClInclude Include="src\Log.h" />
+    <ClInclude Include="src\data\DrawableObject.h" />
     <ClInclude Include="src\data\FSM.h" />
     <ClInclude Include="src\data\FsmState.h" />
     <ClInclude Include="src\data\FsmTrigger.h" />
+    <ClInclude Include="src\imgui\ImFileDialog.h" />
     <ClInclude Include="src\imgui\ImGuiImpl.h" />
+    <ClInclude Include="src\imgui\NodeEditor.h" />
+    <ClInclude Include="src\imgui\TextEditor.h" />
+    <ClInclude Include="src\imgui\imgui_stdlib.h" />
     <ClInclude Include="src\imgui\imnodes\imnodes.h" />
     <ClInclude Include="src\imgui\imnodes\imnodes_internal.h" />
     <ClInclude Include="src\luaFsm.h" />
     <ClInclude Include="src\pch.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\data\DrawableObject.cpp" />
     <ClCompile Include="src\Graphics\Math.cpp" />
     <ClCompile Include="src\Graphics\VisualNode.cpp" />
     <ClCompile Include="src\Graphics\Window.cpp" />
-    <ClCompile Include="src\imgui\imgui_stdlib.cpp" />
-    <ClCompile Include="src\imgui\NodeEditor.cpp" />
-    <ClCompile Include="src\imgui\TextEditor.cpp" />
+    <ClCompile Include="src\Graphics\stb_image.cpp" />
+    <ClCompile Include="src\IO\FileReader.cpp" />
+    <ClCompile Include="src\IO\LuaParser.cpp" />
     <ClCompile Include="src\Log.cpp" />
+    <ClCompile Include="src\data\DrawableObject.cpp" />
     <ClCompile Include="src\data\FSM.cpp" />
     <ClCompile Include="src\data\FsmState.cpp" />
     <ClCompile Include="src\data\FsmTrigger.cpp" />
+    <ClCompile Include="src\imgui\ImFileDialog.cpp" />
     <ClCompile Include="src\imgui\ImGuiImpl.cpp" />
+    <ClCompile Include="src\imgui\NodeEditor.cpp" />
+    <ClCompile Include="src\imgui\TextEditor.cpp" />
+    <ClCompile Include="src\imgui\imgui_stdlib.cpp" />
     <ClCompile Include="src\imgui\imnodes\imnodes.cpp" />
     <ClCompile Include="src\luaFSM.cpp" />
     <ClCompile Include="src\pch.cpp">

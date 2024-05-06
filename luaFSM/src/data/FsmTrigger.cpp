@@ -31,6 +31,7 @@ namespace LuaFsm
         m_Node.SetHighlightColorSelected(m_Node.GetHighlightColorSelected());
         m_Node.SetBorderColor(IM_COL32(255, 255, 255, 255));
         m_Node.SetType(NodeType::Transition);
+        m_Node.SetShape(NodeShape::Circle);
     }
 
     FsmState* FsmTrigger::GetCurrentState()
@@ -84,7 +85,7 @@ namespace LuaFsm
             m_CurrentState = fsm->GetState(stateId).get();
     }
 
-    VisualNode* FsmTrigger::DrawNode(NodeEditor* editor)
+    VisualNode* FsmTrigger::DrawNode()
     {
         return m_Node.Draw(this);
     }
@@ -327,7 +328,9 @@ namespace LuaFsm
                 ImGui::InputText(MakeIdString("id").c_str(), &key);
                 static std::string name;
                 ImGui::InputText(MakeIdString("name").c_str(), &name);
-                if (ImGui::Button(MakeIdString("Add State").c_str()))
+                if (!key.empty() && !name.empty() &&
+                    !NodeEditor::Get()->GetCurrentFsm()->GetState(key)
+                    && ImGui::Button(MakeIdString("Add State").c_str()))
                 {
                     auto newState = NodeEditor::Get()->GetCurrentFsm()->AddState(key);
                     NodeEditor::Get()->GetCurrentFsm()->GetTrigger(m_Id)->SetCurrentState(newState->GetId());
@@ -354,7 +357,9 @@ namespace LuaFsm
                 ImGui::InputText(MakeIdString("id").c_str(), &key);
                 static std::string name;
                 ImGui::InputText(MakeIdString("name").c_str(), &name);
-                if (ImGui::Button(MakeIdString("Add State").c_str()))
+                if (!key.empty() && !name.empty() &&
+                    !NodeEditor::Get()->GetCurrentFsm()->GetState(key) &&
+                    ImGui::Button(MakeIdString("Add State").c_str()))
                 {
                     ADD_NEXT_STATE = false;
                     auto newState = NodeEditor::Get()->GetCurrentFsm()->AddState(key);
@@ -398,6 +403,41 @@ namespace LuaFsm
                 ImGui::EndPopup();
             }
         }
+    }
+
+    std::shared_ptr<FsmTrigger> FsmTrigger::Deserialize(const nlohmann::json& json)
+    {
+        auto trigger = std::make_shared<FsmTrigger>(json["id"].get<std::string>());
+        trigger->SetName(json["name"].get<std::string>());
+        trigger->SetDescription(json["description"].get<std::string>());
+        trigger->SetPriority(json["priority"].get<int>());
+        trigger->SetNextState(json["nextStateId"].get<std::string>());
+        trigger->SetCurrentState(json["currentStateId"].get<std::string>());
+        for (const auto& [key, value] : json["arguments"].items())
+            trigger->AddArgument(key, value.get<std::string>());
+        trigger->SetCondition(json["condition"].get<std::string>());
+        trigger->SetOnTrue(json["onTrue"].get<std::string>());
+        trigger->SetOnFalse(json["onFalse"].get<std::string>());
+        trigger->GetNode()->SetTargetPosition({json["positionX"].get<float>(), json["positionY"].get<float>()});
+        return trigger;
+    }
+
+    nlohmann::json FsmTrigger::Serialize() const
+    {
+        nlohmann::json j;
+        j["id"] = m_Id;
+        j["name"] = m_Name;
+        j["description"] = m_Description;
+        j["priority"] = m_Priority;
+        j["nextStateId"] = m_NextStateId;
+        j["currentStateId"] = m_CurrentStateId;
+        j["arguments"] = m_Arguments;
+        j["condition"] = m_Condition;
+        j["onTrue"] = m_OnTrue;
+        j["onFalse"] = m_OnFalse;
+        j["positionX"] = m_Node.GetTargetPosition().x;
+        j["positionY"] = m_Node.GetTargetPosition().y;
+        return j;
     }
 
 

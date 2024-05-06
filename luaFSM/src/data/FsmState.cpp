@@ -26,7 +26,8 @@ namespace LuaFsm
         m_LuaCodeEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
         m_Node.SetId(m_Id);
         m_Node.SetType(NodeType::State);
-        m_OnUpdateArguments.emplace_back("eventData", "eventTrigger");
+        m_Node.SetShape(NodeShape::Ellipse);
+        m_OnUpdateArguments["eventData"] = "eventTrigger";
     }
 
     std::unordered_map<std::string, std::string> FsmState::GetData()
@@ -67,12 +68,49 @@ namespace LuaFsm
         fsm->RemoveState(oldId);
     }
 
+    nlohmann::json FsmState::Serialize() const
+    {
+        nlohmann::json j;
+        j["id"] = m_Id;
+        j["name"] = m_Name;
+        j["description"] = m_Description;
+        j["onInit"] = m_OnInit;
+        j["onEnter"] = m_OnEnter;
+        j["onUpdate"] = m_OnUpdate;
+        j["onExit"] = m_OnExit;
+        j["data"] = m_Data;
+        j["positionX"] = m_Node.GetTargetPosition().x;
+        j["positionY"] = m_Node.GetTargetPosition().y;
+        j["onUpdateArguments"] = m_OnUpdateArguments;
+        j["events"] = m_Events;
+        return j;
+    }
+
     void FsmState::ChangeTriggerId(const std::string& oldId, const std::string& newId)
     {
         if (!m_Triggers.contains(oldId))
             return;
         m_Triggers[newId] = m_Triggers[oldId];
         m_Triggers.erase(oldId);
+    }
+
+    std::shared_ptr<FsmState> FsmState::Deserialize(const nlohmann::json& json)
+    {
+        auto state = std::make_shared<FsmState>(json["id"].get<std::string>());
+        state->SetName(json["name"].get<std::string>());
+        state->SetDescription(json["description"].get<std::string>());
+        state->SetOnInit(json["onInit"].get<std::string>());
+        state->SetOnEnter(json["onEnter"].get<std::string>());
+        state->SetOnUpdate(json["onUpdate"].get<std::string>());
+        state->SetOnExit(json["onExit"].get<std::string>());
+        for (const auto& [key, value] : json["data"].items())
+            state->AddData(key, value.get<std::string>());
+        for (const auto& [key, value] : json["onUpdateArguments"].items())
+            state->AddOnUpdateArgument(key, value.get<std::string>());
+        for (const auto& event : json["events"])
+            state->AddEvent(event);
+        state->GetNode()->SetTargetPosition({json["positionX"].get<float>(), json["positionY"].get<float>()});
+        return state;
     }
 
     void FsmState::AddTrigger(const std::string& key, const FsmTriggerPtr& value)
@@ -376,7 +414,7 @@ namespace LuaFsm
                 ImGui::InputText(MakeIdString("ID").c_str(), &key);
                 static std::string name;
                 ImGui::InputText(MakeIdString("Name").c_str(), &name);
-                if (!key.empty() && ImGui::Button(MakeIdString("Add Trigger").c_str()))
+                if (!key.empty() && !name.empty() && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id) && ImGui::Button(MakeIdString("Add Trigger").c_str()))
                 {
                     auto newTrigger = AddTrigger(key);
                     newTrigger->SetName(name);
@@ -497,10 +535,13 @@ namespace LuaFsm
         code += indentTabs + fmt::format("\t---Conditions for moving to other states\n");
         code += indentTabs + fmt::format("\t---@type table<string, FSM_TRIGGER>\n");
         code += indentTabs + fmt::format("\ttriggers = {{\n");
-        for (const auto& [key, value] : m_Triggers)
-            code += indentTabs + value->GetLuaCode(indent + 2) + ",\n";
         code += indentTabs + fmt::format("\t}},\n");
-        code += indentTabs + fmt::format("}})");
+        code += indentTabs + fmt::format("}})\n");
+        for (const auto& [key, value] : m_Triggers)
+        {
+            code += value->GetLuaCode() + "\n";
+            code += fmt::format("{0}:registerTrigger({1})\n", m_Id, key);
+        }
         return code;
     }
     

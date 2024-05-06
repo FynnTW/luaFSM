@@ -3,6 +3,7 @@
 #include <string>
 
 #include "imgui.h"
+#include "json.hpp"
 #include "Graphics/VisualNode.h"
 #include "imgui/TextEditor.h"
 
@@ -55,8 +56,12 @@ namespace LuaFsm
         VisualNode* GetNode() { return &m_Node; }
         [[nodiscard]] std::string MakeIdString(const std::string& name) const;
         [[nodiscard]] ImVec2 GetPosition() { return m_Node.GetPosition(); }
-        VisualNode* DrawNode(NodeEditor* editor);
+        VisualNode* DrawNode();
         void DrawProperties();
+        
+        static std::shared_ptr<FsmTrigger> Deserialize(const nlohmann::json& json);
+
+        nlohmann::json Serialize() const;
         
         std::string GetLuaCode(int indent = 0);
 

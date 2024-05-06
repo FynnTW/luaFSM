@@ -5,6 +5,7 @@
 #include "DrawableObject.h"
 #include "FsmState.h"
 #include "FsmTrigger.h"
+#include "json.hpp"
 
 namespace LuaFsm
 {
@@ -41,6 +42,11 @@ namespace LuaFsm
         std::string GetLuaCode();
         void ChangeTriggerId(const std::string& oldId, const std::string& newId);
         std::unordered_map<std::string, FsmTriggerPtr> GetTriggers();
+        void DrawProperties();
+        static std::shared_ptr<Fsm> ParseFile(const std::string& path);
+        std::shared_ptr<Fsm> ParseFile2(const std::string& path);
+        nlohmann::json Serialize() const;
+        static std::shared_ptr<Fsm> Deserialize(const nlohmann::json& json);
 
     private:
         std::unordered_map<std::string, FsmStatePtr> m_States{};
@@ -48,6 +54,7 @@ namespace LuaFsm
         std::unordered_map<int, std::string> m_TriggerIds{};
         FsmState* m_CurrentState;
         std::string m_InitialStateId;
+        TextEditor m_LuaCodeEditor;
         std::vector<std::string> m_UpdateEvents{};
     };
 }

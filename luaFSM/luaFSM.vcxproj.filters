@@ -4,6 +4,9 @@
     <Filter Include="Graphics">
       <UniqueIdentifier>{1653CE33-0220-293F-2B39-17E717655ECD}</UniqueIdentifier>
     </Filter>
+    <Filter Include="IO">
+      <UniqueIdentifier>{FD735900-E9FF-870B-52AE-880B3E59880B}</UniqueIdentifier>
+    </Filter>
     <Filter Include="data">
       <UniqueIdentifier>{5F91957C-4BC8-960D-F4B4-7C10E0CA120F}</UniqueIdentifier>
     </Filter>
@@ -15,10 +18,28 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Graphics\Math.h">
+      <Filter>Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\VisualNode.h">
+      <Filter>Graphics</Filter>
+    </ClInclude>
     <ClInclude Include="src\Graphics\Window.h">
       <Filter>Graphics</Filter>
     </ClInclude>
+    <ClInclude Include="src\Graphics\stb_image.h">
+      <Filter>Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\IO\FileReader.h">
+      <Filter>IO</Filter>
+    </ClInclude>
+    <ClInclude Include="src\IO\LuaParser.h">
+      <Filter>IO</Filter>
+    </ClInclude>
     <ClInclude Include="src\Log.h" />
+    <ClInclude Include="src\data\DrawableObject.h">
+      <Filter>data</Filter>
+    </ClInclude>
     <ClInclude Include="src\data\FSM.h">
       <Filter>data</Filter>
     </ClInclude>
@@ -28,7 +49,19 @@
     <ClInclude Include="src\data\FsmTrigger.h">
       <Filter>data</Filter>
     </ClInclude>
+    <ClInclude Include="src\imgui\ImFileDialog.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
     <ClInclude Include="src\imgui\ImGuiImpl.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\imgui\NodeEditor.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\imgui\TextEditor.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\imgui\imgui_stdlib.h">
       <Filter>imgui</Filter>
     </ClInclude>
     <ClInclude Include="src\imgui\imnodes\imnodes.h">
@@ -41,10 +74,28 @@
     <ClInclude Include="src\pch.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Graphics\Math.cpp">
+      <Filter>Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\VisualNode.cpp">
+      <Filter>Graphics</Filter>
+    </ClCompile>
     <ClCompile Include="src\Graphics\Window.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>
+    <ClCompile Include="src\Graphics\stb_image.cpp">
+      <Filter>Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\IO\FileReader.cpp">
+      <Filter>IO</Filter>
+    </ClCompile>
+    <ClCompile Include="src\IO\LuaParser.cpp">
+      <Filter>IO</Filter>
+    </ClCompile>
     <ClCompile Include="src\Log.cpp" />
+    <ClCompile Include="src\data\DrawableObject.cpp">
+      <Filter>data</Filter>
+    </ClCompile>
     <ClCompile Include="src\data\FSM.cpp">
       <Filter>data</Filter>
     </ClCompile>
@@ -54,7 +105,19 @@
     <ClCompile Include="src\data\FsmTrigger.cpp">
       <Filter>data</Filter>
     </ClCompile>
+    <ClCompile Include="src\imgui\ImFileDialog.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
     <ClCompile Include="src\imgui\ImGuiImpl.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\imgui\NodeEditor.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\imgui\TextEditor.cpp">
+      <Filter>imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\imgui\imgui_stdlib.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
     <ClCompile Include="src\imgui\imnodes\imnodes.cpp">

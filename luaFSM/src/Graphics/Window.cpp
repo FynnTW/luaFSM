@@ -10,6 +10,9 @@
 #include "data/FSM.h"
 #include "imgui/TextEditor.h"
 #include "imgui/NodeEditor.h"
+#include "imgui/ImFileDialog.h"
+#include "IO/FileReader.h"
+#include "IO/LuaParser.h"
 
 bool SHUTDOWN = false;
 bool SHOW_METRICS = false;
@@ -119,7 +122,7 @@ namespace LuaFsm
         
         ImGui_ImplOpenGL3_Init("#version 410");
         ImGui_ImplGlfw_InitForOpenGL(GetNativeWindow(), true);
-        startExampleFsm();
+        //startExampleFsm();
         
         AddFont("Cascadia_20",
             ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 20));
@@ -149,7 +152,7 @@ namespace LuaFsm
         m_TextEditor->SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
         m_Palette = palette;
         m_TextEditor->SetPalette(m_Palette);
-        m_TextEditor->SetText(NodeEditor::Get()->GetCurrentFsm()->GetLuaCode());
+        //m_TextEditor->SetText(NodeEditor::Get()->GetCurrentFsm()->GetLuaCode());
     }
 
     
@@ -165,6 +168,13 @@ namespace LuaFsm
     bool OPENED = true;
     bool OPENED2 = true;
     bool ADD_STATE_POPUP = false;
+    bool ADD_FSM_POPUP = false;
+    bool OPEN_FILE_DIALOG = false;
+    bool SAVE_FSM = false;
+
+    bool ADD_NEW_STATE_AT_CURSOR = false;
+    bool ADD_NEW_TRIGGER_AT_CURSOR = false;
+    ImVec2 CURSOR_POS = {0, 0};
     
     void Window::TrimTrailingNewlines(std::string& str)
     {
@@ -174,7 +184,6 @@ namespace LuaFsm
         }
     }
     
-    
     void Window::OnImGuiRender()
     {
         const auto nodeEditor = NodeEditor::Get();
@@ -183,6 +192,19 @@ namespace LuaFsm
         {
             if (ImGui::BeginMenu("File"))
             {
+                if (ImGui::MenuItem("New..."))
+                {
+                    ADD_FSM_POPUP = true;
+                }
+                if (ImGui::MenuItem("Load..."))
+                {
+                    OPEN_FILE_DIALOG = true;
+                }
+                if (ImGui::MenuItem("Save..."))
+                {
+                    SAVE_FSM = true;
+                }
+                ImGui::Separator();
                 if (ImGui::MenuItem("Exit"))
                 {
                     SHUTDOWN = true;
@@ -190,6 +212,112 @@ namespace LuaFsm
                 ImGui::EndMenu();
             }
             ImGui::EndMainMenuBar();
+        }
+
+        if (ADD_FSM_POPUP)
+        {
+            ImGui::OpenPopup("Add FSM");
+            ADD_FSM_POPUP = false;
+        }
+
+        if (SAVE_FSM)
+        {
+            ImGui::OpenPopup("Save FSM");
+            SAVE_FSM = false;
+        }
+
+        if (OPEN_FILE_DIALOG)
+        {
+            ImGui::OpenPopup("Open File");
+            OPEN_FILE_DIALOG = false;
+        }
+
+        if (ImGui::BeginPopup("Save FSM"))
+        {
+            static std::string filePath;
+            if (filePath.empty())
+            {
+                IGFD::FileDialogConfig config;
+                config.path = ".";
+                ImGuiFileDialog::Instance()->OpenDialog("SaveFile", "Save File", ".json", config);
+                if (ImGuiFileDialog::Instance()->Display("SaveFile")) {
+                    if (ImGuiFileDialog::Instance()->IsOk()) { // action if OK
+                        filePath = ImGuiFileDialog::Instance()->GetFilePathName();
+                        if (filePath.find(".json") == std::string::npos)
+                            filePath += ".json";
+                    }
+                    // close
+                    ImGuiFileDialog::Instance()->Close();
+                }
+                nlohmann::json j;
+                if (nodeEditor->GetCurrentFsm())
+                    j = nodeEditor->GetCurrentFsm()->Serialize();
+                //save file
+                std::ofstream file(filePath);
+                file << j.dump(4);
+                file.close();
+            }
+            ImGui::EndPopup();
+        }
+
+        if (ImGui::BeginPopup("Add FSM"))
+        {
+            ImGui::Text("Add FSM");
+            static std::string fsmId;
+            ImGui::InputText("FSM ID", &fsmId, 0);
+            static std::string fsmName;
+            ImGui::InputText("FSM Name", &fsmName, 0);
+            if (!fsmId.empty() && !fsmName.empty())
+            {
+                if (ImGui::Button("Add"))
+                {
+                    const auto fsm = std::make_shared<Fsm>(fsmId);
+                    fsm->SetName(fsmName);
+                    NodeEditor::Get()->SetCurrentFsm(fsm);
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            else if (fsmId.empty())
+            {
+                ImGui::Text("FSM ID cannot be empty");
+            }
+            else if (fsmName.empty())
+            {
+                ImGui::Text("FSM Name cannot be empty");
+            }
+            if (ImGui::Button("Cancel"))
+            {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+
+        if (ImGui::BeginPopup("Open File"))
+        {
+            ImGui::Text("Open File");
+            static std::string filePath;
+            if (filePath.empty())
+            {
+                IGFD::FileDialogConfig config;
+                config.path = ".";
+                ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".json", config);
+                if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey")) {
+                    if (ImGuiFileDialog::Instance()->IsOk()) { // action if OK
+                        filePath = ImGuiFileDialog::Instance()->GetFilePathName();
+                    }
+                    // close
+                    ImGuiFileDialog::Instance()->Close();
+                }
+                if (!filePath.empty())
+                {
+                    //deserialize file
+                    auto string = FileReader::ReadAllText(filePath);
+                    const auto json = nlohmann::json::parse(string);
+                    const auto fsm = Fsm::Deserialize(json);
+                    NodeEditor::Get()->SetCurrentFsm(fsm);
+                }
+            }
+            ImGui::EndPopup();
         }
 
         // Set window position and size
@@ -208,13 +336,13 @@ namespace LuaFsm
         // Second-level menu bar
         if (ImGui::BeginMenuBar())
         {
-            if (ImGui::Button("Add State"))
+            if (NodeEditor::Get()->GetCurrentFsm() && ImGui::Button("FSM"))
+            {
+                NodeEditor::Get()->DeselectAllNodes();
+            }
+            if (NodeEditor::Get()->GetCurrentFsm() && ImGui::Button("Add State"))
             {
                 ADD_STATE_POPUP = true;
-            }
-            if (ImGui::Button("Debug"))
-            {
-                 SHOW_METRICS = !SHOW_METRICS;
             }
             ImGui::EndMenuBar();
         }
@@ -272,6 +400,8 @@ namespace LuaFsm
             ImGui::EndPopup();
         }
 
+        
+
         // Dock space setup
         ImGuiID dockspaceId = ImGui::GetID("NodeEditorDockspace");
         ImGui::DockSpace(dockspaceId, ImVec2(0, 0), ImGuiDockNodeFlags_None);
@@ -296,18 +426,19 @@ namespace LuaFsm
         // Canvas window
         ImGui::SetNextWindowContentSize({4096, 4096});
         ImGui::PushFont(nodeEditor->GetFont());
-        ImGui::Begin("Canvas", nullptr, ImGuiWindowFlags_NoBringToFrontOnFocus
-            | ImGuiWindowFlags_NoScrollbar
-            );
+        ImGui::Begin("Canvas", nullptr, ImGuiWindowFlags_NoBringToFrontOnFocus| ImGuiWindowFlags_NoScrollbar);
+        if (!NodeEditor::Get()->GetCurrentFsm())
+            ImGui::End();
+        else
         {
-        
+
             nodeEditor->SetCanvasPos(ImGui::GetWindowPos());
             nodeEditor->SetCanvasSize(ImGui::GetWindowSize());
             for (const auto& [key, state] : nodeEditor->GetCurrentFsm()->GetStates())
                 state->DrawNode();
             for (const auto& [key, trigger] : nodeEditor->GetCurrentFsm()->GetTriggers())
             {
-                trigger->DrawNode(nodeEditor);
+                trigger->DrawNode();
                 if (trigger->GetCurrentState())
                 {
                     if (const auto node = trigger->GetCurrentState()->GetNode())
@@ -333,7 +464,117 @@ namespace LuaFsm
             }
             else if (ImGui::IsWindowHovered() && !ImGui::IsMouseDown(ImGuiMouseButton_Right) && NodeEditor::Get()->IsCreatingLink())
             {
+                
+                if (const auto otherNode = nodeEditor->GetSelectedNode(); otherNode)
+                {
+                    switch (otherNode->GetType())
+                    {
+                        case NodeType::State:
+                        {
+                                CURSOR_POS = ImGui::GetMousePos();
+                                ADD_NEW_TRIGGER_AT_CURSOR = true;
+                                break;
+                        }
+                        case NodeType::Transition:
+                        {
+                                CURSOR_POS = ImGui::GetMousePos();
+                                ADD_NEW_STATE_AT_CURSOR = true;
+                            break;
+                        }
+                    }
+                }
                 NodeEditor::Get()->SetCreatingLink(false);
+            }
+
+            if (ADD_NEW_STATE_AT_CURSOR)
+            {
+                ImGui::OpenPopup("Add State At Cursor");
+                ADD_NEW_STATE_AT_CURSOR = false;
+            }
+
+            if (ADD_NEW_TRIGGER_AT_CURSOR)
+            {
+                ImGui::OpenPopup("Add Trigger At Cursor");
+                ADD_NEW_TRIGGER_AT_CURSOR = false;
+            }
+
+            if (ImGui::BeginPopup("Add State At Cursor"))
+            {
+                if (const auto fromNode = NodeEditor::Get()->GetSelectedNode(); fromNode && fromNode->GetType() == NodeType::Transition)
+                {
+                    static std::string id;
+                    ImGui::InputText("id", &id);
+                    static std::string name;
+                    ImGui::InputText("name", &name);
+                    if (!id.empty() && !name.empty() && !NodeEditor::Get()->GetCurrentFsm()->GetState(id) && ImGui::Button("Add State"))
+                    {
+                        const auto state = NodeEditor::Get()->GetCurrentFsm()->AddState(id);
+                        state->GetNode()->SetTargetPosition(Math::SubtractVec2(CURSOR_POS, {25, 50}));
+                        state->SetName(name);
+                        const auto trigger = NodeEditor::Get()->GetCurrentFsm()->GetTrigger(fromNode->GetId());
+                        trigger->SetNextState(state->GetId());
+                        name = "";
+                        id = "";
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else if (id.empty())
+                    {
+                        ImGui::Text("ID can not be empty.");
+                    }
+                    else if (name.empty())
+                    {
+                        ImGui::Text("Name can not be empty.");
+                    }
+                    else if (NodeEditor::Get()->GetCurrentFsm()->GetState(id))
+                    {
+                        ImGui::Text("State with ID already exists.");
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel"))
+                    {
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+                ImGui::EndPopup();
+            }
+
+            if (ImGui::BeginPopup("Add Trigger At Cursor"))
+            {
+                if (const auto fromNode = NodeEditor::Get()->GetSelectedNode(); fromNode && fromNode->GetType() == NodeType::State)
+                {
+                    static std::string id;
+                    ImGui::InputText("id", &id);
+                    static std::string name;
+                    ImGui::InputText("name", &name);
+                    if (!id.empty() && !name.empty() && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id) && ImGui::Button("Add Trigger"))
+                    {
+                        const auto state = NodeEditor::Get()->GetCurrentFsm()->GetState(fromNode->GetId());
+                        const auto trigger = state->AddTrigger(id);
+                        trigger->GetNode()->SetTargetPosition(Math::SubtractVec2(CURSOR_POS, {25, 50}));
+                        trigger->SetName(name);
+                        name = "";
+                        id = "";
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else if (id.empty())
+                    {
+                        ImGui::Text("ID can not be empty.");
+                    }
+                    else if (name.empty())
+                    {
+                        ImGui::Text("Name can not be empty.");
+                    }
+                    else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id))
+                    {
+                        ImGui::Text("Trigger with ID already exists.");
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel"))
+                    {
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+                ImGui::EndPopup();
             }
             ImGui::End();
         }
@@ -360,6 +601,10 @@ namespace LuaFsm
                     }
                 }
             }
+            if (nodeEditor->GetCurrentFsm() && !nodeEditor->GetSelectedNode())
+                NodeEditor::Get()->SetShowFsmProps(true);
+            if (nodeEditor->GetCurrentFsm() && nodeEditor->ShowFsmProps())
+                nodeEditor->GetCurrentFsm()->DrawProperties();
             ImGui::End();
         }
     }

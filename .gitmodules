@@ -10,3 +10,6 @@
 [submodule "3rd/zep"]
 	path = 3rd/zep
 	url = https://github.com/Rezonality/zep
+[submodule "3rd/ImGuiFileDialog"]
+	path = 3rd/ImGuiFileDialog
+	url = https://github.com/aiekick/ImGuiFileDialog

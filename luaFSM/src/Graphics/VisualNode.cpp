@@ -33,10 +33,12 @@ namespace LuaFsm
     VisualNode* VisualNode::Draw(const DrawableObject* object)
     {
         const auto editor = NodeEditor::Get();
-        if (m_Type == NodeType::State)
+        if (m_Shape == NodeShape::Ellipse)
             ImGui::SetNextWindowSize(InitSizesEllipse(object->GetName()), ImGuiCond_Always);
-        else if (m_Type == NodeType::Transition)
+        else if (m_Shape == NodeShape::Diamond)
             ImGui::SetNextWindowSize(InitSizesDiamond2(), ImGuiCond_Always);
+        else if (m_Shape == NodeShape::Circle)
+            ImGui::SetNextWindowSize(InitSizes2(), ImGuiCond_Always);
         if (m_TargetPosition.x < 0)
             m_TargetPosition = editor->GetNextNodePos(this);
         ImVec2 adjustedPos = GetPosition();
@@ -79,7 +81,7 @@ namespace LuaFsm
             auto drawList = ImGui::GetWindowDrawList();
             HandleSelection(editor);
             ImVec2 right = {};
-            if (m_Type == NodeType::State)
+            if (m_Shape == NodeShape::Ellipse)
             {
                 drawList->AddEllipseFilled(GetDrawPos(),  m_EllipseRadius, GetCurrentColor());
                 if (NodeEditor::Get()->GetCurrentFsm()->GetInitialState() == m_Id)
@@ -88,7 +90,7 @@ namespace LuaFsm
                     drawList->AddEllipse(GetDrawPos(), m_EllipseRadius, GetBorderColor());
                 drawList->AddText(GetTextPos(object->GetName().c_str()), IM_COL32_WHITE, object->GetName().c_str());
             }
-            else if (m_Type == NodeType::Transition)
+            else if (m_Shape == NodeShape::Diamond)
             {
                 const auto center = GetDrawPos();
                 const float width = GetSize().x;
@@ -99,7 +101,11 @@ namespace LuaFsm
                 right = ImVec2(center.x + width / 2 - 3.0f, center.y);
                 drawList->AddQuadFilled(left, top, right, bottom, GetCurrentColor());
                 drawList->AddQuad(left, top, right, bottom, GetBorderColor());
-                drawList->AddText(Math::AddVec2X(right, 3), IM_COL32_WHITE, object->GetName().c_str());
+            }
+            else if (m_Shape == NodeShape::Circle)
+            {
+                drawList->AddCircleFilled(GetDrawPos(), m_Radius, GetCurrentColor());
+                drawList->AddCircle(GetDrawPos(), m_Radius, GetBorderColor());
             }
             const auto windowPos = ImGui::GetWindowPos();
             const auto movedAmount =
@@ -114,7 +120,8 @@ namespace LuaFsm
                 drawList = ImGui::GetWindowDrawList();
                 drawList->AddText(
                     Math::AddVec2X(
-                        Math::SubtractVec2Y(right, ImGui::CalcTextSize(object->GetName().c_str()).y * 0.5f),
+                        Math::SubtractVec2Y(Math::AddVec2X(GetLastDrawPos(), m_Radius),
+                            ImGui::CalcTextSize(object->GetName().c_str()).y * 0.5f),
                         3), IM_COL32_WHITE, object->GetName().c_str());
             }
         }

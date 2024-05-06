@@ -5,11 +5,18 @@
 
 #include <utility>
 
+#include "Graphics/Window.h"
+#include "imgui/imgui_stdlib.h"
+#include "imgui/NodeEditor.h"
+#include "IO/FileReader.h"
+#include "json.hpp"
+
 namespace LuaFsm
 {
     Fsm::Fsm(const std::string& id)
     {
         Fsm::SetId(id);
+        m_LuaCodeEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
     }
 
     void Fsm::AddState(const std::string& key, const FsmStatePtr& value)
@@ -84,6 +91,154 @@ namespace LuaFsm
         if (m_InitialStateId == state)
             m_InitialStateId = "";
     }
+    
+    void Fsm::DrawProperties()
+    {
+        std::string id = GetId();
+        if (ImGui::Button("Refresh") || m_LuaCodeEditor.GetText().empty())
+        {
+            //m_LuaCodeEditor.SetText(GetLuaCode());
+            auto json = Serialize();
+            auto str = json.dump(4);
+            m_LuaCodeEditor.SetText(str);
+        }
+        if (ImGui::BeginTabBar("FSM Properties0"))
+        {
+            
+            if (ImGui::BeginTabItem("Properties"))
+            {
+                
+                ImGui::InputText("Id", &id);
+                ImGui::InputText("Name", &m_Name);
+                if (!GetInitialState().empty())
+                    ImGui::Selectable(GetInitialState().c_str(), false);
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                    NodeEditor::Get()->SetSelectedNode(NodeEditor::Get()->GetNode(GetInitialState()));
+                m_LuaCodeEditor.SetPalette(Window::GetPalette());
+                m_LuaCodeEditor.Render("Lua Code");
+                ImGui::EndTabItem();
+            }
+            
+            ImGui::EndTabBar();
+        }
+        
+        if (id != GetId())
+        {
+            SetId(id);
+        }
+    }
+
+    FsmPtr Fsm::ParseFile(const std::string& path)
+    {
+        const auto reader = std::make_shared<FileReader>();
+        auto fsm = std::make_shared<Fsm>("");
+        reader->Open(path);
+        bool inFsmTable = false;
+        if (!reader->IsOpen())
+            return nullptr;
+        do
+        {
+            auto line = reader->ReadLine();
+            FileReader::RemoveLuaComments(line);
+            FileReader::RemoveTabs(line);
+            if (line.empty())
+                continue;
+            if (!inFsmTable && FileReader::LineContains(line, "FSM:new"))
+            {
+                if (std::string varName = reader->GetVarName(line, "FSM:new"); !varName.empty())
+                {
+                    fsm->SetId(varName);
+                    inFsmTable = true;
+                    continue;
+                }
+            }
+            if (inFsmTable)
+            {
+                if (FileReader::LineContains(line, "name"))
+                {
+                    if (std::string name = reader->GetTableField(line, "name"); !name.empty())
+                    {
+                        fsm->SetName(name);
+                        continue;
+                    }
+                }
+                if (FileReader::LineContains(line, "initialStateId"))
+                {
+                    if (std::string initialState = reader->GetTableField(line, "initialStateId"); !initialState.empty())
+                    {
+                        fsm->SetInitialState(initialState);
+                        continue;
+                    }
+                }
+            }
+        } while (!reader->IsEndOfFile());
+        reader->Close();
+        return fsm;
+    }
+
+
+    
+
+    FsmPtr Fsm::ParseFile2(const std::string& path)
+    {
+        const auto reader = std::make_shared<FileReader>();
+        auto fsm = std::make_shared<Fsm>("");
+        reader->Open(path);
+        std::string variableName;
+        if (!reader->IsOpen())
+            return nullptr;
+        do
+        {
+            auto word = reader->ReadWord();
+            if (word.empty())
+                continue;
+            
+        } while (!reader->IsEndOfFile());
+        reader->Close();
+        return fsm;
+    }
+
+    nlohmann::json Fsm::Serialize() const
+    {
+        nlohmann::json j;
+        j["id"] = m_Id;
+        j["name"] = m_Name;
+        j["initialStateId"] = m_InitialStateId;
+        nlohmann::json states;
+        for (const auto& [key, value] : m_States)
+        {
+            states[key] = value->Serialize();
+        }
+        j["states"] = states;
+        nlohmann::json triggers;
+        for (const auto& [key, value] : m_Triggers)
+        {
+            triggers[key] = value->Serialize();
+        }
+        j["triggers"] = triggers;
+        return j;
+    }
+
+    std::shared_ptr<Fsm> Fsm::Deserialize(const nlohmann::json& json)
+    {
+        auto fsm = std::make_shared<Fsm>(json["id"].get<std::string>());
+        fsm->SetName(json["name"].get<std::string>());
+        fsm->SetInitialState(json["initialStateId"].get<std::string>());
+        for (const auto& [key, value] : json["states"].items())
+        {
+            fsm->AddState(key, FsmState::Deserialize(value));
+        }
+        for (const auto& [key, value] : json["triggers"].items())
+        {
+            fsm->AddTrigger(key, FsmTrigger::Deserialize(value));
+            if (const auto trigger = fsm->GetTrigger(key); trigger != nullptr)
+            {
+                if (const auto state = trigger->GetCurrentState(); state != nullptr)
+                    state->AddTrigger(trigger);
+            }
+        }
+        return fsm;
+    }
 
     std::string Fsm::GetLuaCode()
     {
@@ -102,10 +257,13 @@ namespace LuaFsm
         code += fmt::format("\t---States within this FSM\n");
         code += fmt::format("\t---@type table<string, FSM_STATE>\n");
         code += fmt::format("\tstates = {{\n");
-        for (const auto& [key, value] : m_States)
-            code += value->GetLuaCode(2) + ",\n";
         code += fmt::format("\t}},\n");
-        code += fmt::format("}})");
+        code += fmt::format("}})\n");
+        for (const auto& [key, value] : m_States)
+        {
+            code += value->GetLuaCode(0) + "\n";
+            code += fmt::format("{0}:registerState({1})\n", m_Id, key);
+        }
         return code;
     }
 

@@ -16,8 +16,15 @@ namespace LuaFsm
     NodeEditor::~NodeEditor()
     = default;
 
+    int NODE_COUNT = 0;
+
     ImVec2 NodeEditor::GetNextNodePos(VisualNode* node)
     {
+        NODE_COUNT++;
+        
+        return {100 + (NODE_COUNT * 10.f), 50 + (NODE_COUNT * 10.f)};
+        /*
+        * 
         auto newPos = ImVec2(100, 0);
         if (m_LastNode)
             newPos = m_LastNodePos;
@@ -27,11 +34,14 @@ namespace LuaFsm
         m_LastNodePos.y += node->GetSize().y + 25;
         if (m_LastNodePos.x > GetCanvasSize().x)
         {
-            m_LastNodePos.x = 0;
-            m_LastNodePos.y += node->GetSize().y;
+            m_LastNodePos.x = 100;
+            m_LastNodePos.y += node->GetSize().y * 2;
         }
         m_LastNode = node;
+        newPos.x = std::max(newPos.x, 100.0f);
+        newPos.y = std::max(newPos.y, 100.0f);
         return newPos;
+         */
     }
 
     ImVec2 normalize(const ImVec2& vec)
@@ -81,6 +91,7 @@ namespace LuaFsm
         for (const auto& [key, trigger] : m_Fsm->GetTriggers())
             trigger->GetNode()->Deselect();
         m_SelectedNode = nullptr;
+        m_ShowFsmProps = true;
     }
 
     VisualNode* NodeEditor::GetNode(const std::string& id, const NodeType type) const
@@ -106,5 +117,6 @@ namespace LuaFsm
         DeselectAllNodes();
         node->Select();
         m_SelectedNode = node;
+        m_ShowFsmProps = false;
     }
 }

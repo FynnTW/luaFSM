@@ -21,14 +21,13 @@ namespace LuaFsm
         [[nodiscard]] std::string GetOnInit() const { return m_OnInit; }
         [[nodiscard]] std::string GetOnEnter() const { return m_OnEnter; }
         [[nodiscard]] std::string GetOnUpdate() const { return m_OnUpdate; }
-        [[nodiscard]] std::vector<std::pair<std::string, std::string>> GetOnUpdateArguments() const { return m_OnUpdateArguments; }
+        [[nodiscard]] std::unordered_map<std::string, std::string> GetOnUpdateArguments() const { return m_OnUpdateArguments; }
         [[nodiscard]] std::string GetOnExit() const { return m_OnExit; }
         [[nodiscard]] std::unordered_map<std::string, std::string> GetData();
         [[nodiscard]] std::unordered_map<std::string, FsmTriggerPtr> GetTriggers() const { return m_Triggers; }
         [[nodiscard]] std::vector<std::string> GetEvents() const { return m_Events; }
 
-        void AddOnUpdateArgument(const std::string& key, const std::string& value) { m_OnUpdateArguments.emplace_back(
-            key, value); }
+        void AddOnUpdateArgument(const std::string& key, const std::string& value) { m_OnUpdateArguments[key] = value;}
         void RemoveOnUpdateArgument(const std::string& key)
         {
             if (std::ranges::find_if(m_OnUpdateArguments, [key](const auto& pair) { return pair.first == key; }) != m_OnUpdateArguments.end())
@@ -69,7 +68,9 @@ namespace LuaFsm
         [[nodiscard]] std::string GetId() const override { return m_Id; }
         void virtual SetName(const std::string& name) override { m_Name = name; }
         void virtual SetId(const std::string& id) override;
+        nlohmann::json Serialize() const;
         void ChangeTriggerId(const std::string& oldId, const std::string& newId);
+        static std::shared_ptr<FsmState> Deserialize(const nlohmann::json& json);
 
     private:
         VisualNode m_Node{};
@@ -81,7 +82,7 @@ namespace LuaFsm
         std::string m_OnUpdate;
         TextEditor m_OnUpdateEditor{};
         TextEditor m_LuaCodeEditor{};
-        std::vector<std::pair<std::string, std::string>> m_OnUpdateArguments{};
+        std::unordered_map<std::string, std::string> m_OnUpdateArguments{};
         std::string m_OnExit;
         TextEditor m_OnExitEditor{};
         std::unordered_map<std::string, std::string> m_Data{};

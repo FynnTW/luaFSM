@@ -14,6 +14,7 @@ IncludeDir = {}
 IncludeDir["imgui"] = "3rd/imgui"
 IncludeDir["glfw"] = "3rd/glfw/include"
 IncludeDir["glad"] = "3rd/glad/include"
+IncludeDir["imguifiledialog"] = "3rd/ImGuiFileDialog"
 
 include "3rd/imgui_premake.lua"
 include "3rd/glfw_premake.lua"
@@ -24,7 +25,7 @@ project "luaFSM"
     kind "ConsoleApp"
     language "C++"
     cppdialect "C++20"
-    staticruntime "on"
+    staticruntime "off"
 
     targetdir ("bin/" .. outputdir .. "/%{prj.name}")
     objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
@@ -48,6 +49,7 @@ project "luaFSM"
         "3rd/zep/include",
         "%{IncludeDir.imgui}",
         "%{IncludeDir.glad}",
+        "%{IncludeDir.imguifiledialog}",
         "%{IncludeDir.glfw}",
     }
 
@@ -61,6 +63,7 @@ project "luaFSM"
         defines "LUAFSM_DEBUG"
         runtime "Debug"
         symbols "on"
+        optimize "off"
 
     filter "configurations:Release"
         defines "LUAFSM_RELEASE"
@@ -73,17 +76,18 @@ project "luaFSM"
         optimize "on"
 
     filter {"system:windows", "configurations:Debug"}
-        defines "THRYLOS_DEBUG"
+        defines "LUAFSM_DEBUG"
         runtime "Debug"
         symbols "On"
+        optimize "off"
 
     filter {"system:windows", "configurations:Release"}
-        defines "THRYLOS_RELEASE"
+        defines "LUAFSM_RELEASE"
         runtime "Release"
         optimize "On"
 
     filter {"system:windows", "configurations:Dist"}
-        defines "THRYLOS_DIST"
+        defines "LUAFSM_DIST"
         runtime "Release"
         optimize "On"
 

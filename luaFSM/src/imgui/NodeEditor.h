@@ -50,6 +50,9 @@ namespace LuaFsm
 
         [[nodiscard]] bool IsCreatingLink() const { return m_IsCreatingLink; }
         void SetCreatingLink(const bool creatingLink) { m_IsCreatingLink = creatingLink; }
+
+        [[nodiscard]] bool ShowFsmProps() const { return m_ShowFsmProps; }
+        void SetShowFsmProps(const bool showFsmProps) { m_ShowFsmProps = showFsmProps; }
         
     public:
         inline static uint32_t nodeWindowFlags = ImGuiWindowFlags_NoCollapse
@@ -67,6 +70,7 @@ namespace LuaFsm
         ImVec2 m_CanvasSize{0, 0};
         VisualNode* m_SelectedNode = nullptr;
         VisualNode* m_LastNode = nullptr;
+        bool m_ShowFsmProps = false;
         ImFont* m_Font = nullptr;
         bool m_IsCreatingLink = false;
         FsmPtr m_Fsm = nullptr;

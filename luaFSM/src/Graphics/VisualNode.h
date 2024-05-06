@@ -56,12 +56,12 @@ namespace LuaFsm
             return Math::ClosestPointOnDiamond(GetLastDrawPos(), m_Size.x, m_Size.y, toPoint);
             
         }
-        [[nodiscard]] ImVec2 GetFromPoint(const VisualNode* toNode)
+        [[nodiscard]] ImVec2 GetFromPoint(const VisualNode* toNode) const
         {
             if (m_Shape == NodeShape::Ellipse)
                 return Math::ClosestPointOnEllipse(GetLastDrawPos(), m_EllipseRadius.x, m_EllipseRadius.y,  toNode->GetLastDrawPos());
             if (m_Shape == NodeShape::Circle)
-                return Math::ClosestPointOnCircle(GetDrawPos(), m_Radius, toNode->GetLastDrawPos());
+                return Math::ClosestPointOnCircle(GetLastDrawPos(), m_Radius, toNode->GetLastDrawPos());
             return Math::ClosestPointOnDiamond(GetLastDrawPos(), m_Size.x, m_Size.y, toNode->GetLastDrawPos());
         }
         [[nodiscard]] std::string GetId() const { return m_Id; }
@@ -97,6 +97,15 @@ namespace LuaFsm
         void HandleSelection(NodeEditor* editor);
         ImVec2 InitSizes()
         {
+            auto sideLength = Math::GetCircleWindowSideLength(m_Radius);
+            m_Size = {sideLength, sideLength};
+            m_Center = {sideLength / 2, sideLength / 2};
+            m_Shape = NodeShape::Circle;
+            return m_Size;
+        }
+        ImVec2 InitSizes2()
+        {
+            m_Radius = 12.f;
             auto sideLength = Math::GetCircleWindowSideLength(m_Radius);
             m_Size = {sideLength, sideLength};
             m_Center = {sideLength / 2, sideLength / 2};
