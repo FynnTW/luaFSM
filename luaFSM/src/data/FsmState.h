@@ -23,7 +23,7 @@ namespace LuaFsm
         [[nodiscard]] std::string GetOnUpdate() const { return m_OnUpdate; }
         [[nodiscard]] std::unordered_map<std::string, std::string> GetOnUpdateArguments() const { return m_OnUpdateArguments; }
         [[nodiscard]] std::string GetOnExit() const { return m_OnExit; }
-        [[nodiscard]] std::unordered_map<std::string, std::string> GetData();
+        [[nodiscard]] std::unordered_map<std::string, StateData> GetData();
         [[nodiscard]] std::unordered_map<std::string, FsmTriggerPtr> GetTriggers() const { return m_Triggers; }
         [[nodiscard]] std::vector<std::string> GetEvents() const { return m_Events; }
 
@@ -38,7 +38,7 @@ namespace LuaFsm
         void SetOnEnter(const std::string& onEnter) { m_OnEnter = onEnter; }
         void SetOnUpdate(const std::string& onUpdate) { m_OnUpdate = onUpdate; }
         void SetOnExit(const std::string& onExit) { m_OnExit = onExit; }
-        void AddData(const std::string& key, const std::string& value) { m_Data[key] = value; }
+        void AddData(const std::string& key, const StateData& value) { m_Data[key] = value; }
         void AddTrigger(const std::string& key, const FsmTriggerPtr& value);
         FsmTriggerPtr AddTrigger(const std::string& key);
         [[nodiscard]] std::string MakeIdString(const std::string& name) const;
@@ -68,7 +68,7 @@ namespace LuaFsm
         [[nodiscard]] std::string GetId() const override { return m_Id; }
         void virtual SetName(const std::string& name) override { m_Name = name; }
         void virtual SetId(const std::string& id) override;
-        nlohmann::json Serialize() const;
+        nlohmann::json Serialize();
         void ChangeTriggerId(const std::string& oldId, const std::string& newId);
         static std::shared_ptr<FsmState> Deserialize(const nlohmann::json& json);
 
@@ -85,7 +85,7 @@ namespace LuaFsm
         std::unordered_map<std::string, std::string> m_OnUpdateArguments{};
         std::string m_OnExit;
         TextEditor m_OnExitEditor{};
-        std::unordered_map<std::string, std::string> m_Data{};
+        std::unordered_map<std::string, StateData> m_Data{};
         std::unordered_map<std::string, std::shared_ptr<FsmTrigger>> m_Triggers{};
         std::vector<std::string> m_TriggersIds{};
         std::vector<std::string> m_Events{};

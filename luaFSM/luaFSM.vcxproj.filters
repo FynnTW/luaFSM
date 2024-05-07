@@ -13,9 +13,6 @@
     <Filter Include="imgui">
       <UniqueIdentifier>{0098A80F-6CAC-D0C0-352E-7420A101CDF1}</UniqueIdentifier>
     </Filter>
-    <Filter Include="imgui\imnodes">
-      <UniqueIdentifier>{5E01C113-CAC1-3C4A-93FC-85C7FF7B8126}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Graphics\Math.h">
@@ -63,12 +60,6 @@
     </ClInclude>
     <ClInclude Include="src\imgui\imgui_stdlib.h">
       <Filter>imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\imgui\imnodes\imnodes.h">
-      <Filter>imgui\imnodes</Filter>
-    </ClInclude>
-    <ClInclude Include="src\imgui\imnodes\imnodes_internal.h">
-      <Filter>imgui\imnodes</Filter>
     </ClInclude>
     <ClInclude Include="src\luaFsm.h" />
     <ClInclude Include="src\pch.h" />
@@ -119,9 +110,6 @@
     </ClCompile>
     <ClCompile Include="src\imgui\imgui_stdlib.cpp">
       <Filter>imgui</Filter>
-    </ClCompile>
-    <ClCompile Include="src\imgui\imnodes\imnodes.cpp">
-      <Filter>imgui\imnodes</Filter>
     </ClCompile>
     <ClCompile Include="src\luaFSM.cpp" />
     <ClCompile Include="src\pch.cpp" />

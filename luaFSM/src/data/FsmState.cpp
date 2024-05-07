@@ -30,11 +30,8 @@ namespace LuaFsm
         m_OnUpdateArguments["eventData"] = "eventTrigger";
     }
 
-    std::unordered_map<std::string, std::string> FsmState::GetData()
+    std::unordered_map<std::string, StateData> FsmState::GetData()
     {
-        for (const auto& [key, trigger] : m_Triggers)
-            for (const auto& [argKey, argValue] : trigger->GetArguments())
-                m_Data[argKey] = "";
         return m_Data;
     }
 
@@ -68,7 +65,7 @@ namespace LuaFsm
         fsm->RemoveState(oldId);
     }
 
-    nlohmann::json FsmState::Serialize() const
+    nlohmann::json FsmState::Serialize()
     {
         nlohmann::json j;
         j["id"] = m_Id;
@@ -78,7 +75,10 @@ namespace LuaFsm
         j["onEnter"] = m_OnEnter;
         j["onUpdate"] = m_OnUpdate;
         j["onExit"] = m_OnExit;
-        j["data"] = m_Data;
+        nlohmann::json data;
+        for (auto& [key, value] : m_Data)
+            data[key] = value.Serialize();
+        j["data"] = data;
         j["positionX"] = m_Node.GetTargetPosition().x;
         j["positionY"] = m_Node.GetTargetPosition().y;
         j["onUpdateArguments"] = m_OnUpdateArguments;
@@ -104,7 +104,7 @@ namespace LuaFsm
         state->SetOnUpdate(json["onUpdate"].get<std::string>());
         state->SetOnExit(json["onExit"].get<std::string>());
         for (const auto& [key, value] : json["data"].items())
-            state->AddData(key, value.get<std::string>());
+            state->AddData(key, StateData::Deserialize(value));
         for (const auto& [key, value] : json["onUpdateArguments"].items())
             state->AddOnUpdateArgument(key, value.get<std::string>());
         for (const auto& event : json["events"])
@@ -117,8 +117,6 @@ namespace LuaFsm
     {
         m_Triggers[key] = value;
         value->SetCurrentState(m_Id);
-        for (const auto& [argKey, argValue] : value->GetArguments())
-            AddData(argKey, "");
         const auto fsm = NodeEditor::Get()->GetCurrentFsm();
         if (!fsm)
             return;
@@ -130,16 +128,14 @@ namespace LuaFsm
     {
         m_Triggers[key] = std::make_shared<FsmTrigger>(key);
         auto& value = m_Triggers[key]; // Reference to the shared pointer
-        std::cout << "Creating FsmTrigger with key: " << key << " at address: " << value.get() << std::endl;
         value->SetCurrentState(m_Id);
-        for (const auto& [argKey, argValue] : value->GetArguments())
-            AddData(argKey, "");
         NodeEditor::Get()->GetCurrentFsm()->AddTrigger(value);
         return value;
     }
 
     bool IS_ADD_EVENT_OPEN = false;
     bool IS_ADD_TRIGGER_OPEN = false;
+    bool IS_ADD_DATA_OPEN = false;
     bool IS_ADD_STATE_ARGUMENT_OPEN = false;
     bool IS_EDIT_STATE_ARGUMENT_OPEN = false;
     bool OPEN_EVENT_POPUP = false;
@@ -153,8 +149,11 @@ namespace LuaFsm
     }
 
     std::string NEW_EVENT;
+    std::string dataKey;
     bool UNLINK_TRIGGER = false;
     bool DELETE_STATE = false;
+    bool EDIT_DATA_DESCR = false;
+    std::map<std::string, StateData> tempData;
     
     void FsmState::DrawProperties()
     {
@@ -165,24 +164,23 @@ namespace LuaFsm
         {
             if (ImGui::BeginTabItem(MakeIdString("Properties").c_str()))
             {
-                if (ImGui::Button(MakeIdString("Delete State").c_str()))
-                    DELETE_STATE = true;
-                if (ImGui::Button(MakeIdString("Set as initial").c_str()))
-                    NodeEditor::Get()->GetCurrentFsm()->SetInitialState(GetId());
                 ImGui::Text("ID");
                 std::string idLabel = "##ID" + GetId();
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputText(idLabel.c_str(), &id);
                 ImGui::Text("Name");
                 std::string name = GetName();
                 std::string nameLabel = "##Name" + GetId();
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputText(nameLabel.c_str(), &name);
                 SetName(name);
                 ImGui::Text("Description");
                 std::string description = GetDescription();
                 std::string descriptionLabel = "##Description" + GetId();
-                ImGui::InputText(descriptionLabel.c_str(), &description);
-                SetDescription(description);
+                ImGui::InputTextMultiline(descriptionLabel.c_str(), &description, {ImGui::GetContentRegionAvail().x, 100});
+                 SetDescription(description);
                 ImGui::Text("Events");
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputText(MakeIdString("New Event").c_str(), &NEW_EVENT);
                 if (!NEW_EVENT.empty() && ImGui::Button(MakeIdString("Add Event").c_str()))
                 {
@@ -221,24 +219,100 @@ namespace LuaFsm
                     }
                     ImGui::EndListBox();
                 }
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+                if (ImGui::Button(MakeIdString("Delete State").c_str()))
+                    DELETE_STATE = true;
+                ImGui::PopStyleColor();
+                ImGui::SameLine();
+                if (ImGui::Button(MakeIdString("Set as initial").c_str()))
+                    NodeEditor::Get()->GetCurrentFsm()->SetInitialState(GetId());
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem(MakeIdString("OnUpdate").c_str()))
             {
                 ImGui::Text("Data");
-                if (ImGui::BeginListBox(MakeIdString("Data").c_str(),{200, 100 }))
+                ImGui::SameLine();
+                if (ImGui::Button(MakeIdString("Add Data").c_str()))
                 {
+                    IS_ADD_DATA_OPEN = true;
+                }
+                if (ImGui::BeginTable(MakeIdString("Arguments").c_str(), 6,
+                    ImGuiTableFlags_BordersInnerV
+                    | ImGuiTableFlags_BordersOuter
+                    | ImGuiTableFlags_SizingFixedFit
+                    | ImGuiTableFlags_Resizable
+                    | ImGuiTableFlags_Reorderable
+                    | ImGuiTableFlags_RowBg))
+                {
+                    int index = 0;
+                    ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+                    ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+                    ImGui::TableSetupColumn("Edit Description", ImGuiTableColumnFlags_WidthFixed, 160.f);
+                    ImGui::TableSetupColumn("Copy", ImGuiTableColumnFlags_WidthFixed, 60.f);
+                    ImGui::TableSetupColumn("Remove", ImGuiTableColumnFlags_WidthFixed, 40.f);
                     
-                    for (const auto& [key, value] : GetData())
+                    for (auto& [key, stateData] : GetData())
                     {
-                        ImGui::Selectable(MakeIdString(key).c_str(), false);
-                        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                        if (!tempData.contains(key))
+                            tempData[key] = stateData;
+                        ImGui::TableNextRow();
+                        std::string keyId = "##Key" + std::to_string(index) + GetId();
+                        std::string valueId = "##Value" + std::to_string(index) + GetId();
+                        std::string typeId = "##Type" + std::to_string(index) + GetId();
+                        
+                        // Key column
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                        ImGui::InputText(keyId.c_str(), &tempData[key].name);
+
+                        // Value column
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                        ImGui::InputText(valueId.c_str(), &tempData[key].value);
+
+                        // Type column
+                        ImGui::TableSetColumnIndex(2);
+                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                        ImGui::InputText(typeId.c_str(), &tempData[key].type);
+
+                        ImGui::TableSetColumnIndex(3);
+                        std::string editId = "Edit Description## " + key + std::to_string(index) + GetId();
+                        if (ImGui::Button(editId.c_str()))
                         {
-                            std::string text = "self.data." + key;
-                            ImGui::SetClipboardText(text.c_str());
+                            EDIT_DATA_DESCR = true;
+                            dataKey = key;
                         }
+
+                        ImGui::TableSetColumnIndex(4);
+                        std::string removeId = "Remove## " + key + std::to_string(index) + GetId();
+                        if (ImGui::Button(removeId.c_str()))
+                        {
+                            m_Data.erase(key);
+                            break;
+                        }
+                        
+                        ImGui::TableSetColumnIndex(5);
+                        std::string copyId = "Copy## " + key + std::to_string(index) + GetId();
+                        if (ImGui::Button(copyId.c_str()))
+                        {
+                            std::string copyString = "self.data." + key;
+                            ImGui::SetClipboardText(copyString.c_str());
+                        }
+                        index++;
                     }
-                    ImGui::EndListBox();
+                    ImGui::EndTable();
+                }
+                for (auto& [key, stateData] : tempData)
+                {
+                    if (stateData.name != key)
+                    {
+                        if (m_Data.contains(key))
+                            m_Data.erase(key);
+                        m_Data[stateData.name] = stateData;
+                    }
+                    else if (m_Data.contains(key))
+                        m_Data[key] = stateData;
                 }
                 ImGui::Text("Arguments");
                 ImGui::SameLine();
@@ -296,6 +370,84 @@ namespace LuaFsm
             
             ImGui::EndTabBar();
         }
+
+        if (EDIT_DATA_DESCR)
+        {
+            std::string popupId = MakeIdString("Edit Description");
+            ImGui::OpenPopup(popupId.c_str());
+            if (ImGui::BeginPopup(popupId.c_str()))
+            {
+                static std::string descr = GetData()[dataKey].comment;
+                ImGui::InputTextMultiline("Description", &descr, {300, 50});
+                if (ImGui::Button("Change Description"))
+                {
+                    EDIT_DATA_DESCR = false;
+                    GetData()[dataKey].comment = descr;
+                    dataKey = "";
+                    descr = "";
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel"))
+                {
+                    EDIT_DATA_DESCR = false;
+                    dataKey = "";
+                    descr = "";
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+        }
+
+        if (IS_ADD_DATA_OPEN)
+        {
+            std::string popupId = MakeIdString("Add Argument");
+            ImGui::OpenPopup(popupId.c_str());
+            if (ImGui::BeginPopup(popupId.c_str()))
+            {
+                static std::string key;
+                static std::string value = "nil";
+                static std::string type;
+                static std::string comment;
+                ImGui::InputText(MakeIdString("Name").c_str(), &key);
+                ImGui::InputText(MakeIdString("Value").c_str(), &value);
+                ImGui::InputText(MakeIdString("Type").c_str(), &type);
+                ImGui::InputTextMultiline("Description", &comment, {300, 50});
+                if (!m_Data.contains(key) && ImGui::Button(MakeIdString("Add Data").c_str()))
+                {
+                    if (value.empty() || value == "nil")
+                    {
+                        if (type == "number")
+                            value = "0";
+                        else if (type == "string")
+                            value = "";
+                        else if (type == "integer")
+                            value = "0";
+                        else if (type == "boolean")
+                            value = "false";
+                        else if (std::regex_match(value, std::regex("table")))
+                            value = "{}";
+                        else
+                            value = "nil";
+                    }
+                    AddData(key, {key, value, type, comment});
+                    IS_ADD_DATA_OPEN = false;
+                    key = "";
+                    value = "";
+                    type = "any";
+                    comment = "";
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(MakeIdString("Cancel").c_str()))
+                {
+                    IS_ADD_DATA_OPEN = false;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+        }
+        
         if (IS_ADD_STATE_ARGUMENT_OPEN)
         {
             std::string popupId = MakeIdString("Add OnUpdate Argument");
@@ -372,6 +524,7 @@ namespace LuaFsm
                     OPEN_EVENT_POPUP = false;
                     ImGui::CloseCurrentPopup();
                 }
+                ImGui::SameLine();
                 if (ImGui::Button("Cancel"))
                 {
                     EVENT_TO_REMOVE = "";
@@ -395,6 +548,7 @@ namespace LuaFsm
                     UNLINK_TRIGGER = false;
                     ImGui::CloseCurrentPopup();
                 }
+                ImGui::SameLine();
                 if (ImGui::Button("Cancel"))
                 {
                     TRIGGER_TO_REMOVE = "";
@@ -443,6 +597,7 @@ namespace LuaFsm
                     DELETE_STATE = false;
                     ImGui::CloseCurrentPopup();
                 }
+                ImGui::SameLine();
                 if (ImGui::Button("Cancel"))
                 {
                     DELETE_STATE = false;
@@ -485,7 +640,11 @@ namespace LuaFsm
         for (int i = 0; i < indent; i++)
             indentTabs += "\t";
         std::string code;
-        code += indentTabs + fmt::format("{0} = FSM_STATE:new({{\n", m_Id);
+        code += indentTabs + fmt::format("\n---------------------------------------------------------------------------\n");
+        code += indentTabs + fmt::format("----------------------------- <FSM STATE> ---------------------------------\n");
+        code += indentTabs + fmt::format("---------------------------------------------------------------------------\n");
+        code += indentTabs + fmt::format("\n---@type FSM_STATE\n");
+        code += indentTabs + fmt::format("local {0} = FSM_STATE:new({{\n", m_Id);
         code += indentTabs + fmt::format("\t---Unique Identifier of this State\n");
         code += indentTabs + fmt::format("\t---@type string\n");
         code += indentTabs + fmt::format("\tid = \"{0}\",\n", m_Id);
@@ -504,39 +663,74 @@ namespace LuaFsm
         code += indentTabs + fmt::format("\t---Data the state contains\n");
         code += indentTabs + fmt::format("\t---@type table<string, any>\n");
         code += indentTabs + fmt::format("\tdata = {{\n");
-        for (const auto& [key, value] : m_Data)
-            code += indentTabs + fmt::format("\t\t{0} = \"{1}\",\n", key, value);
+        for (const auto& [key, data] : m_Data)
+        {
+            if (!data.comment.empty())
+                code += indentTabs + fmt::format("\t\t---{0}\n", data.comment);
+            code += indentTabs + fmt::format("\t\t---@type {0}\n", data.type);
+            if (data.type == "string")
+                code += indentTabs + fmt::format("\t\t{0} = \"{1}\",\n", key, data.value);
+            else
+            {
+                code += indentTabs + fmt::format("\t\t{0} = {1},\n", key, data.value);
+            }
+        }
         code += indentTabs + fmt::format("\t}},\n");
-        code += indentTabs + fmt::format("\t---@param self FSM_STATE\n");
-        code += indentTabs + fmt::format("\tonInit = function(self)\n");
-        for (const auto& line : m_OnInitEditor.GetTextLines())
-            code += indentTabs + fmt::format("\t\t{0}\n", line);
-        code += indentTabs + fmt::format("\tend,\n");
-        code += indentTabs + fmt::format("\t---@param self FSM_STATE\n");
-        code += indentTabs + fmt::format("\tonEnter = function(self)\n");
-        for (const auto& line : m_OnEnterEditor.GetTextLines())
-            code += indentTabs + fmt::format("\t\t{0}\n", line);
-        code += indentTabs + fmt::format("\tend,\n");
-        code += indentTabs + fmt::format("\t---@param self FSM_STATE\n");
-        for (const auto& [key, value] : m_OnUpdateArguments)
-            code += indentTabs + fmt::format("\t---@param {0} {1}\n", key, value);
-        code += indentTabs + fmt::format("\tonUpdate = function(self");
-        for (const auto& [key, value] : m_OnUpdateArguments)
-            code += fmt::format(", {0}", key);
-        code += fmt::format(")\n");
-        for (const auto& line : m_OnUpdateEditor.GetTextLines())
-            code += indentTabs + fmt::format("\t\t{0}\n", line);
-        code += indentTabs + fmt::format("\tend,\n");
-        code += indentTabs + fmt::format("\t---@param self FSM_STATE\n");
-        code += indentTabs + fmt::format("\tonExit = function(self)\n");
-        for (const auto& line : m_OnExitEditor.GetTextLines())
-            code += indentTabs + fmt::format("\t\t{0}\n", line);
-        code += indentTabs + fmt::format("\tend,\n");
         code += indentTabs + fmt::format("\t---Conditions for moving to other states\n");
         code += indentTabs + fmt::format("\t---@type table<string, FSM_TRIGGER>\n");
         code += indentTabs + fmt::format("\ttriggers = {{\n");
         code += indentTabs + fmt::format("\t}},\n");
         code += indentTabs + fmt::format("}})\n");
+        code += indentTabs + fmt::format("\nfunction {0}:onInit()", m_Id);
+        if (m_OnInit.empty())
+            code += indentTabs + fmt::format(" ");
+        else
+        {
+            code += indentTabs + fmt::format("\n");
+            for (const auto& line : m_OnInitEditor.GetTextLines())
+                code += indentTabs + fmt::format("\t{0}\n", line);
+        }
+        code += indentTabs + fmt::format("end\n");
+        for (const auto& [key, value] : m_OnUpdateArguments)
+            code += indentTabs + fmt::format("\n---@param {0} {1}\n", key, value);
+        code += indentTabs + fmt::format("function {0}:onUpdate(", m_Id);
+        int argNum = 0;
+        for (const auto& [key, value] : m_OnUpdateArguments)
+        {
+            if (argNum++ > 0)
+                code += ", ";
+            code += fmt::format("{0}", key);
+        }
+        code += fmt::format(")");
+        if (m_OnUpdate.empty())
+            code += indentTabs + fmt::format(" ");
+        else
+        {
+            code += indentTabs + fmt::format("\n");
+            for (const auto& line : m_OnUpdateEditor.GetTextLines())
+                code += indentTabs + fmt::format("\t{0}\n", line);
+        }
+        code += indentTabs + fmt::format("end\n");
+        code += indentTabs + fmt::format("\nfunction {0}:onEnter()", m_Id);
+        if (m_OnEnter.empty())
+            code += indentTabs + fmt::format(" ");
+        else
+        {
+            code += indentTabs + fmt::format("\n");
+            for (const auto& line : m_OnEnterEditor.GetTextLines())
+                code += indentTabs + fmt::format("\t{0}\n", line);
+        }
+        code += indentTabs + fmt::format("end\n");
+        code += indentTabs + fmt::format("\nfunction {0}:onExit()", m_Id);
+        if (m_OnExit.empty())
+            code += indentTabs + fmt::format(" ");
+        else
+        {
+            code += indentTabs + fmt::format("\n");
+            for (const auto& line : m_OnExitEditor.GetTextLines())
+                code += indentTabs + fmt::format("\t{0}\n", line);
+        }
+        code += indentTabs + fmt::format("end\n");
         for (const auto& [key, value] : m_Triggers)
         {
             code += value->GetLuaCode() + "\n";

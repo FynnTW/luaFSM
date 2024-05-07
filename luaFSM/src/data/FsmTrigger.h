@@ -29,8 +29,8 @@ namespace LuaFsm
         [[nodiscard]] int GetPriority() const { return m_Priority; }
         void SetPriority(const int priority) { m_Priority = priority; }
         
-        [[nodiscard]] const std::unordered_map<std::string, std::string>& GetArguments() const { return m_Arguments; }
-        void AddArgument(const std::string& key, const std::string& value) { m_Arguments[key] = value; }
+        [[nodiscard]] const std::unordered_map<std::string, StateData>& GetData();
+        void AddData(const std::string& key, const StateData& value) { m_Data[key] = value; }
         
         [[nodiscard]] const std::string& GetCondition() const { return m_Condition; }
         void SetCondition(const std::string& condition) { m_Condition = condition; }
@@ -76,7 +76,7 @@ namespace LuaFsm
         std::string m_OnFalse;
         TextEditor m_OnFalseEditor{};
         TextEditor m_LuaCodeEditor{};
-        std::unordered_map<std::string, std::string> m_Arguments{};
+        std::unordered_map<std::string, StateData> m_Data{};
         std::string m_NextStateId;
         std::string m_CurrentStateId;
         FsmState* m_CurrentState = nullptr;

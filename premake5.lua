@@ -25,7 +25,7 @@ project "luaFSM"
     kind "ConsoleApp"
     language "C++"
     cppdialect "C++20"
-    staticruntime "off"
+    staticruntime "on"
 
     targetdir ("bin/" .. outputdir .. "/%{prj.name}")
     objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
@@ -46,7 +46,6 @@ project "luaFSM"
         "%{prj.name}/src",
         "%{prj.name}/src",
         "3rd/spdlog/include",
-        "3rd/zep/include",
         "%{IncludeDir.imgui}",
         "%{IncludeDir.glad}",
         "%{IncludeDir.imguifiledialog}",

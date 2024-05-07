@@ -52,9 +52,10 @@ namespace LuaFsm
         return {vec.x / length, vec.y / length};
     }
 
-    void NodeEditor::DrawLine(const ImVec2 fromPos, const ImVec2 toPos, const ImU32 color, const float thickness, const float arrowHeadWidth, const float arrowHeadLength)
+    void NodeEditor::DrawLine(const ImVec2 fromPos, const ImVec2 toPos, ImU32 color, const float thickness, const float arrowHeadWidth, const float arrowHeadLength)
     {
         ImDrawList* drawList = ImGui::GetWindowDrawList();
+        color = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
         const ImVec2 direction = Math::SubtractVec2(toPos, fromPos);
         const ImVec2 normalizedDirection = normalize(direction);
         const ImVec2 perpendicular(-normalizedDirection.y, normalizedDirection.x);
@@ -115,6 +116,8 @@ namespace LuaFsm
     void NodeEditor::SetSelectedNode(VisualNode* node)
     {
         DeselectAllNodes();
+        if (!node)
+            return;
         node->Select();
         m_SelectedNode = node;
         m_ShowFsmProps = false;

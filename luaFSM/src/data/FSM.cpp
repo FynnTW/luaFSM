@@ -19,23 +19,10 @@ namespace LuaFsm
         m_LuaCodeEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
     }
 
-    void Fsm::AddState(const std::string& key, const FsmStatePtr& value)
-    {
-        m_States[key] = value;
-        for (const auto& event : value->GetEvents())
-            if (std::ranges::find(m_UpdateEvents, event) == m_UpdateEvents.end())
-                AddUpdateEvent(event);
-        if (m_InitialStateId.empty())
-            m_InitialStateId = key;
-    }
-
     FsmStatePtr Fsm::AddState(const std::string& key)
     {
         m_States[key] = make_shared<FsmState>(key);
         auto value = m_States[key];
-        for (const auto& event : value->GetEvents())
-            if (std::ranges::find(m_UpdateEvents, event) == m_UpdateEvents.end())
-                AddUpdateEvent(event);
         if (m_InitialStateId.empty())
             m_InitialStateId = key;
         return value;
@@ -44,12 +31,9 @@ namespace LuaFsm
     void Fsm::AddState(const FsmStatePtr& value)
     {
         const auto key = value->GetId();
-        AddState(key, value);
-    }
-
-    void Fsm::AddTrigger(const std::string& key, FsmTriggerPtr value)
-    {
-        m_Triggers[key] = std::move(value);
+        m_States[key] = value;
+        if (m_InitialStateId.empty())
+            m_InitialStateId = key;
     }
 
     std::unordered_map<std::string, FsmTriggerPtr> Fsm::GetTriggers()
@@ -60,7 +44,7 @@ namespace LuaFsm
     void Fsm::AddTrigger(const FsmTriggerPtr& value)
     {
         const auto key = value->GetId();
-        AddTrigger(key, value);
+        m_Triggers[key] = value;
     }
 
     FsmTriggerPtr Fsm::GetTrigger(const std::string& key)
@@ -79,9 +63,11 @@ namespace LuaFsm
 
     void Fsm::RemoveState(const std::string& state)
     {
+        if (NodeEditor::Get()->GetSelectedNode() == GetState(state)->GetNode())
+            NodeEditor::Get()->DeselectAllNodes();
         if (m_States.contains(state))
             m_States.erase(state);
-        for (const auto& [key, value] : m_Triggers)
+        for (const auto& value : m_Triggers | std::views::values)
         {
             if (value->GetCurrentStateId() == state)
                 value->SetCurrentState("");
@@ -91,29 +77,38 @@ namespace LuaFsm
         if (m_InitialStateId == state)
             m_InitialStateId = "";
     }
-    
+
+    FsmState* Fsm::GetInitialState()
+    {
+        if (m_InitialStateId.empty())
+            return nullptr;
+        if (const auto state = GetState(m_InitialStateId); state)
+            return state.get();
+        return nullptr;
+    }
+
     void Fsm::DrawProperties()
     {
         std::string id = GetId();
         if (ImGui::Button("Refresh") || m_LuaCodeEditor.GetText().empty())
+            m_LuaCodeEditor.SetText(GetLuaCode());
+        if (ImGui::BeginTabBar("FSM Properties"))
         {
-            //m_LuaCodeEditor.SetText(GetLuaCode());
-            auto json = Serialize();
-            auto str = json.dump(4);
-            m_LuaCodeEditor.SetText(str);
-        }
-        if (ImGui::BeginTabBar("FSM Properties0"))
-        {
-            
             if (ImGui::BeginTabItem("Properties"))
             {
                 
                 ImGui::InputText("Id", &id);
                 ImGui::InputText("Name", &m_Name);
-                if (!GetInitialState().empty())
-                    ImGui::Selectable(GetInitialState().c_str(), false);
-                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-                    NodeEditor::Get()->SetSelectedNode(NodeEditor::Get()->GetNode(GetInitialState()));
+                ImGui::Separator();
+                ImGui::Text("Initial State: ");
+                if (!GetInitialStateId().empty())
+                {
+                    ImGui::SameLine();
+                    ImGui::Selectable(GetInitialStateId().c_str(), false);
+                }
+                if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    NodeEditor::Get()->SetSelectedNode(NodeEditor::Get()->GetNode(GetInitialStateId()));
+                ImGui::Separator();
                 m_LuaCodeEditor.SetPalette(Window::GetPalette());
                 m_LuaCodeEditor.Render("Lua Code");
                 ImGui::EndTabItem();
@@ -127,77 +122,7 @@ namespace LuaFsm
             SetId(id);
         }
     }
-
-    FsmPtr Fsm::ParseFile(const std::string& path)
-    {
-        const auto reader = std::make_shared<FileReader>();
-        auto fsm = std::make_shared<Fsm>("");
-        reader->Open(path);
-        bool inFsmTable = false;
-        if (!reader->IsOpen())
-            return nullptr;
-        do
-        {
-            auto line = reader->ReadLine();
-            FileReader::RemoveLuaComments(line);
-            FileReader::RemoveTabs(line);
-            if (line.empty())
-                continue;
-            if (!inFsmTable && FileReader::LineContains(line, "FSM:new"))
-            {
-                if (std::string varName = reader->GetVarName(line, "FSM:new"); !varName.empty())
-                {
-                    fsm->SetId(varName);
-                    inFsmTable = true;
-                    continue;
-                }
-            }
-            if (inFsmTable)
-            {
-                if (FileReader::LineContains(line, "name"))
-                {
-                    if (std::string name = reader->GetTableField(line, "name"); !name.empty())
-                    {
-                        fsm->SetName(name);
-                        continue;
-                    }
-                }
-                if (FileReader::LineContains(line, "initialStateId"))
-                {
-                    if (std::string initialState = reader->GetTableField(line, "initialStateId"); !initialState.empty())
-                    {
-                        fsm->SetInitialState(initialState);
-                        continue;
-                    }
-                }
-            }
-        } while (!reader->IsEndOfFile());
-        reader->Close();
-        return fsm;
-    }
-
-
     
-
-    FsmPtr Fsm::ParseFile2(const std::string& path)
-    {
-        const auto reader = std::make_shared<FileReader>();
-        auto fsm = std::make_shared<Fsm>("");
-        reader->Open(path);
-        std::string variableName;
-        if (!reader->IsOpen())
-            return nullptr;
-        do
-        {
-            auto word = reader->ReadWord();
-            if (word.empty())
-                continue;
-            
-        } while (!reader->IsEndOfFile());
-        reader->Close();
-        return fsm;
-    }
-
     nlohmann::json Fsm::Serialize() const
     {
         nlohmann::json j;
@@ -222,20 +147,18 @@ namespace LuaFsm
     std::shared_ptr<Fsm> Fsm::Deserialize(const nlohmann::json& json)
     {
         auto fsm = std::make_shared<Fsm>(json["id"].get<std::string>());
+        NodeEditor::Get()->SetCurrentFsm(fsm);
         fsm->SetName(json["name"].get<std::string>());
         fsm->SetInitialState(json["initialStateId"].get<std::string>());
         for (const auto& [key, value] : json["states"].items())
-        {
-            fsm->AddState(key, FsmState::Deserialize(value));
-        }
+            fsm->AddState(FsmState::Deserialize(value));
         for (const auto& [key, value] : json["triggers"].items())
         {
-            fsm->AddTrigger(key, FsmTrigger::Deserialize(value));
-            if (const auto trigger = fsm->GetTrigger(key); trigger != nullptr)
-            {
-                if (const auto state = trigger->GetCurrentState(); state != nullptr)
-                    state->AddTrigger(trigger);
-            }
+            const auto trigger = FsmTrigger::Deserialize(value);
+            if (const auto state = trigger->GetCurrentState(); state != nullptr)
+                state->AddTrigger(trigger);
+            else
+                fsm->AddTrigger(trigger);
         }
         return fsm;
     }
@@ -262,8 +185,19 @@ namespace LuaFsm
         for (const auto& [key, value] : m_States)
         {
             code += value->GetLuaCode(0) + "\n";
-            code += fmt::format("{0}:registerState({1})\n", m_Id, key);
         }
+        code += fmt::format("\t---Activate this FSM\n");
+        code += fmt::format("function {0}:activate()\n", m_Id);
+        for (const auto& [key, state] : m_States)
+        {
+            for (const auto& [id, trigger] : state->GetTriggers())
+                code += fmt::format("{0}:registerTrigger({1})\n", state->GetId(), id);
+            code += fmt::format("self:registerState({0})\n", key);
+            
+        }
+        code += fmt::format("self:setInitialState({0})\n", m_InitialStateId);
+        code += fmt::format("end\n");
+        
         return code;
     }
 
@@ -278,6 +212,8 @@ namespace LuaFsm
 
     void Fsm::RemoveTrigger(const std::string& trigger)
     {
+        if (NodeEditor::Get()->GetSelectedNode() == GetTrigger(trigger)->GetNode())
+            NodeEditor::Get()->DeselectAllNodes();
         const auto obj = GetTrigger(trigger);
         if (obj == nullptr)
             return;

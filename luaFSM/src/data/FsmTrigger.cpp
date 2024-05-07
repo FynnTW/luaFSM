@@ -107,13 +107,20 @@ namespace LuaFsm
         }
         m_Node.SetId(id);
     }
-    
+
+    const std::unordered_map<std::string, StateData>& FsmTrigger::GetData()
+    {
+        m_Data.clear();
+        if (const auto currentState = GetCurrentState())
+            m_Data = currentState->GetData();
+        return m_Data;
+    }
+
     std::string FsmTrigger::MakeIdString(const std::string& name) const
     {
         return name + "##" + m_Id;
     }
 
-    bool IS_ADD_TRIGGER_ARGUMENT_OPEN = false;
     bool UNLINK_CURRENT_STATE = false;
     bool UNLINK_NEXT_STATE = false;
     bool ADD_CURRENT_STATE = false;
@@ -129,81 +136,25 @@ namespace LuaFsm
         {
             if (ImGui::BeginTabItem(MakeIdString("Properties").c_str()))
             {
-                if (ImGui::Button(MakeIdString("Delete").c_str()))
-                    DELETE_TRIGGER = true;
                 ImGui::Text("ID");
                 std::string idLabel = "##ID" + GetId();
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputText(idLabel.c_str(), &id);
                 ImGui::Text("Name");
                 std::string name = GetName();
                 std::string nameLabel = "##Name" + GetId();
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputText(nameLabel.c_str(), &name);
                 SetName(name);
                 ImGui::Text("Description");
                 std::string description = GetDescription();
                 std::string descriptionLabel = "##Description" + GetId();
-                ImGui::InputText(descriptionLabel.c_str(), &description);
+                ImGui::InputTextMultiline(descriptionLabel.c_str(), &description, {ImGui::GetContentRegionAvail().x, 60});
                 SetDescription(description);
                 ImGui::Text("Priority");
+                ImGui::SetNextItemWidth(150.f);
                 ImGui::InputInt(MakeIdString("Priority").c_str(), &m_Priority);
-                ImGui::Text("Arguments");
-                ImGui::SameLine();
-                if (ImGui::Button(MakeIdString("Add Argument").c_str()))
-                {
-                    IS_ADD_TRIGGER_ARGUMENT_OPEN = true;
-                }
-                if (ImGui::BeginTable(MakeIdString("Arguments").c_str(), 4,
-                    ImGuiTableFlags_BordersInnerV
-                    | ImGuiTableFlags_BordersOuter
-                    | ImGuiTableFlags_SizingFixedFit
-                    | ImGuiTableFlags_Resizable
-                    | ImGuiTableFlags_Reorderable
-                    | ImGuiTableFlags_RowBg))
-                {
-                    int index = 0;
-                    ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, 200.0f);
-                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
-                    ImGui::TableSetupColumn("Remove", ImGuiTableColumnFlags_WidthFixed);
-                    ImGui::TableSetupColumn("Copy", ImGuiTableColumnFlags_WidthFixed);
-                    
-                    for (auto& [key, value] : GetArguments())
-                    {
-                        ImGui::TableNextRow();
-                        std::string keyId = "##Key" + std::to_string(index) + GetId();
-                        std::string valueId = "##Value" + std::to_string(index) + GetId();
-                        std::string keyX = key;
-                        std::string valueX = value;
-
-            
-                        // Key column
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-                        ImGui::InputText(keyId.c_str(), &keyX);
-
-                        // Value column
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-                        ImGui::InputText(valueId.c_str(), &valueX);
-
-                        ImGui::TableSetColumnIndex(2);
-                        std::string removeId = "Remove## " + key + std::to_string(index) + GetId();
-                        if (ImGui::Button(removeId.c_str()))
-                        {
-                            m_Arguments.erase(key);
-                            break;
-                        }
-                        
-                        ImGui::TableSetColumnIndex(3);
-                        std::string copyId = "Copy## " + key + std::to_string(index) + GetId();
-                        if (ImGui::Button(copyId.c_str()))
-                        {
-                            std::string copyString = "self.arguments." + key;
-                            ImGui::SetClipboardText(copyString.c_str());
-                        }
-                        index++;
-                    }
-                    ImGui::EndTable();
-                }
+                ImGui::Separator();
                 ImGui::Text("Current State: ");
                 ImGui::SameLine();
                 if (GetCurrentState())
@@ -242,6 +193,44 @@ namespace LuaFsm
                 else if (ImGui::Button(MakeIdString("Add Next State").c_str()))
                     ADD_NEXT_STATE = true;
                 ImGui::Separator();
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+                if (ImGui::Button(MakeIdString("Delete Trigger").c_str()))
+                    DELETE_TRIGGER = true;
+                ImGui::PopStyleColor();
+                ImGui::Separator();
+                ImGui::Text("Data");
+                if (ImGui::BeginListBox(MakeIdString("Data").c_str(), {ImGui::GetContentRegionAvail().x, 100}))
+                {
+                    for (const auto& [key, data] : GetData())
+                    {
+                        std::string text = key;
+                        if (!data.value.empty())
+                        {
+                            if (data.type == "string")
+                                text += " (\"" + data.value + "\")";
+                            else
+                                text += " (" + data.value + ")";
+                        }
+                        text += " : " + data.type;
+                        ImGui::Selectable(MakeIdString(text).c_str(), false);
+                        if (ImGui::IsItemHovered())
+                        {
+                            if (ImGui::BeginTooltip())
+                            {
+                                if (!data.comment.empty())
+                                    ImGui::Text(data.comment.c_str());
+                                ImGui::EndTooltip();
+                            }
+                            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                            {
+                                std::string copyText = "self.data." + key;
+                                ImGui::SetClipboardText(copyText.c_str());
+                            }
+                        }
+                    }
+                    ImGui::EndListBox();
+                }
+                ImGui::Separator();
                 ImGui::Text("Condition");
                 ImGui::Separator();
                 Window::DrawTextEditor(m_ConditionEditor, m_Condition);
@@ -274,6 +263,28 @@ namespace LuaFsm
             SetId(id);
         }
 
+        if (DELETE_TRIGGER)
+        {
+            std::string popupId = MakeIdString("Delete Trigger");
+            ImGui::OpenPopup(popupId.c_str());
+            if (ImGui::BeginPopup(popupId.c_str()))
+            {
+                if (ImGui::Button(MakeIdString("Are you sure?").c_str()))
+                {
+                    NodeEditor::Get()->GetCurrentFsm()->RemoveTrigger(GetId());
+                    DELETE_TRIGGER = false;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(MakeIdString("Cancel").c_str()))
+                {
+                    DELETE_TRIGGER = false;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+        }
+
         if (UNLINK_CURRENT_STATE)
         {
             std::string popupId = MakeIdString("Unlink Current State");
@@ -288,6 +299,7 @@ namespace LuaFsm
                     SetCurrentState("");
                     ImGui::CloseCurrentPopup();
                 }
+                ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Cancel").c_str()))
                 {
                     UNLINK_CURRENT_STATE = false;
@@ -309,6 +321,7 @@ namespace LuaFsm
                     SetNextState("");
                     ImGui::CloseCurrentPopup();
                 }
+                ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Cancel").c_str()))
                 {
                     UNLINK_NEXT_STATE = false;
@@ -338,6 +351,7 @@ namespace LuaFsm
                     ADD_CURRENT_STATE = false;
                     ImGui::CloseCurrentPopup();
                 }
+                ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Cancel").c_str()))
                 {
                     ADD_CURRENT_STATE = false;
@@ -370,34 +384,10 @@ namespace LuaFsm
                     name = "";
                     ImGui::CloseCurrentPopup();
                 }
+                ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Cancel").c_str()))
                 {
                     ADD_NEXT_STATE = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::EndPopup();
-            }
-        }
-
-        if (IS_ADD_TRIGGER_ARGUMENT_OPEN)
-        {
-            std::string popupId = MakeIdString("Add Argument");
-            ImGui::OpenPopup(popupId.c_str());
-            if (ImGui::BeginPopup(popupId.c_str()))
-            {
-                static std::string key;
-                static std::string value;
-                ImGui::InputText(MakeIdString("name").c_str(), &key);
-                ImGui::InputText(MakeIdString("value").c_str(), &value);
-                if (ImGui::Button(MakeIdString("Add Argument").c_str()))
-                {
-                    AddArgument(key, value);
-                    IS_ADD_TRIGGER_ARGUMENT_OPEN = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                if (ImGui::Button(MakeIdString("Cancel").c_str()))
-                {
-                    IS_ADD_TRIGGER_ARGUMENT_OPEN = false;
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::EndPopup();
@@ -413,8 +403,6 @@ namespace LuaFsm
         trigger->SetPriority(json["priority"].get<int>());
         trigger->SetNextState(json["nextStateId"].get<std::string>());
         trigger->SetCurrentState(json["currentStateId"].get<std::string>());
-        for (const auto& [key, value] : json["arguments"].items())
-            trigger->AddArgument(key, value.get<std::string>());
         trigger->SetCondition(json["condition"].get<std::string>());
         trigger->SetOnTrue(json["onTrue"].get<std::string>());
         trigger->SetOnFalse(json["onFalse"].get<std::string>());
@@ -431,7 +419,6 @@ namespace LuaFsm
         j["priority"] = m_Priority;
         j["nextStateId"] = m_NextStateId;
         j["currentStateId"] = m_CurrentStateId;
-        j["arguments"] = m_Arguments;
         j["condition"] = m_Condition;
         j["onTrue"] = m_OnTrue;
         j["onFalse"] = m_OnFalse;
@@ -447,7 +434,11 @@ namespace LuaFsm
         for (int i = 0; i < indent; i++)
             indentTabs += "\t";
         std::string code;
-        code += indentTabs + fmt::format("{0} = FSM_TRIGGER:new({{\n", m_Id);
+        code += indentTabs + fmt::format("\n---------------------------------------------------------------------------\n");
+        code += indentTabs + fmt::format("--------------------------- <FSM TRIGGER> ---------------------------------\n");
+        code += indentTabs + fmt::format("---------------------------------------------------------------------------\n");
+        code += indentTabs + fmt::format("\n---@type FSM_TRIGGER\n");
+        code += indentTabs + fmt::format("local {0} = FSM_TRIGGER:new({{\n", m_Id);
         code += indentTabs + fmt::format("\t---Unique Identifier of this Trigger\n");
         code += indentTabs + fmt::format("\t---@type string\n");
         code += indentTabs + fmt::format("\tid = \"{0}\",\n", m_Id);
@@ -463,75 +454,38 @@ namespace LuaFsm
         code += indentTabs + fmt::format("\t---Name of the state this trigger leads to\n");
         code += indentTabs + fmt::format("\t---@type string\n");
         code += indentTabs + fmt::format("\tnextStateId = \"{0}\",\n", m_NextStateId);
-        code += indentTabs + fmt::format("\t---Data you can utilize inside the functions\n");
-        code += indentTabs + fmt::format("\t---@type table<string, any>\n");
-        code += indentTabs + fmt::format("\targuments = {{\n");
-        for (const auto& [key, value] : m_Arguments)
-            code += indentTabs + fmt::format("\t\t{0} = \"{1}\",\n", key, value);
-        code += indentTabs + fmt::format("\t}},\n");
-        code += indentTabs + fmt::format("\t---@param self FSM_TRIGGER\n");
-        code += indentTabs + fmt::format("\t---@return boolean isTrue\n");
-        code += indentTabs + fmt::format("\tcondition = function(self)\n");
-        for (const auto& line : m_ConditionEditor.GetTextLines())
-            code += indentTabs + fmt::format("\t\t{0}\n", line);
-        code += indentTabs + fmt::format("\tend,\n");
-        code += indentTabs + fmt::format("\t---@param self FSM_TRIGGER\n");
-        code += indentTabs + fmt::format("\tonTrue = function(self)\n");
-        for (const auto& line : m_OnTrueEditor.GetTextLines())
-            code += indentTabs + fmt::format("\t\t{0}\n", line);
-        code += indentTabs + fmt::format("\tend,\n");
-        code += indentTabs + fmt::format("\t---@param self FSM_TRIGGER\n");
-        code += indentTabs + fmt::format("\tonFalse = function(self)\n");
-        for (const auto& line : m_OnFalseEditor.GetTextLines())
-            code += indentTabs + fmt::format("\t\t{0}\n", line);
-        code += indentTabs + fmt::format("\tend,\n");
-        code += indentTabs + fmt::format("}})");
+        code += indentTabs + fmt::format("}})\n");
+        code += indentTabs + fmt::format("\n---@return boolean isTrue\n");
+        code += indentTabs + fmt::format("function {0}:condition()", m_Id);
+        if (m_Condition.empty())
+            code += indentTabs + fmt::format(" ");
+        else
+        {
+            code += indentTabs + fmt::format("\n");
+            for (const auto& line : m_ConditionEditor.GetTextLines())
+                code += indentTabs + fmt::format("\t{0}\n", line);
+        }
+        code += indentTabs + fmt::format("end\n");
+        code += indentTabs + fmt::format("\nfunction {0}:onTrue()", m_Id);
+        if (m_OnTrue.empty())
+            code += indentTabs + fmt::format(" ");
+        else
+        {
+            code += indentTabs + fmt::format("\n");
+            for (const auto& line : m_OnTrueEditor.GetTextLines())
+                code += indentTabs + fmt::format("\t{0}\n", line);
+        }
+        code += indentTabs + fmt::format("end\n");
+        code += indentTabs + fmt::format("\nfunction {0}:onFalse()", m_Id);
+        if (m_OnFalse.empty())
+            code += indentTabs + fmt::format(" ");
+        else
+        {
+            code += indentTabs + fmt::format("\n");
+            for (const auto& line : m_OnFalseEditor.GetTextLines())
+                code += indentTabs + fmt::format("\t{0}\n", line);
+        }
+        code += indentTabs + fmt::format("end\n");
         return code;
     }
 }
-
-/*
- * 
-        if (m_Node.GetTargetPosition().x < 0)
-            m_Node.SetTargetPosition(editor->GetNextNodePos());
-        ImGui::SetNextWindowSize(m_Node.InitSizesDiamond(m_Name), ImGuiCond_Once);
-        ImVec2 adjustedPos = GetPosition();
-        adjustedPos = Math::AddVec2(editor->GetCanvasPos(), adjustedPos);
-        if (adjustedPos.x < 0)
-        {
-            m_Node.SetInvisible(true);
-            return nullptr;
-        }
-        m_Node.SetInvisible(false);
-        // Draw the node
-        if (!Math::ImVec2Equal(m_Node.GetLastPosition(), adjustedPos))
-            ImGui::SetNextWindowPos(adjustedPos);
-        m_Node.SetLastPosition(adjustedPos);
-        ImGui::Begin(m_Id.c_str(), nullptr, NodeEditor::NodeWindowFlags);
-        {
-            const auto drawList = ImGui::GetWindowDrawList();
-            m_Node.HandleSelection(editor);
-
-            const auto center = m_Node.GetDrawPos();
-            const float width = m_Node.GetSize().x;
-            const float height = m_Node.GetSize().y;
-            const auto top = ImVec2(center.x, center.y - height / 2 + 3.0f);
-            const auto bottom = ImVec2(center.x, center.y + height / 2 - 3.0f);
-            const auto left = ImVec2(center.x - width / 2 + 3.0f, center.y);
-            const auto right = ImVec2(center.x + width / 2 - 3.0f, center.y);
-            drawList->AddQuadFilled(left, top, right, bottom, m_Node.GetCurrentColor());
-            drawList->AddQuad(left, top, right, bottom, m_Node.GetBorderColor());
-            
-            drawList->AddText(m_Node.GetTextPos(m_Name.c_str()), IM_COL32_WHITE, m_Name.c_str());
-
-            auto windowPos = ImGui::GetWindowPos();
-            const auto movedAmount =
-                Math::SubtractVec2(windowPos, Math::AddVec2(adjustedPos, {ImGui::GetScrollX() / 5, ImGui::GetScrollY() / 5}));
-            auto newPos = Math::AddVec2(m_Node.GetTargetPosition(), movedAmount);
-            newPos.x = std::max(editor->GetCanvasPos().x + 1, newPos.x);
-            newPos.y = std::max(editor->GetCanvasPos().y + 1, newPos.y);
-            m_Node.SetTargetPosition(newPos);
-            ImGui::End();
-        }
-        return &m_Node;
- */

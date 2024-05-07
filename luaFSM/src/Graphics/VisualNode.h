@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include <json.hpp>
+
 #include "imgui.h"
 #include "Math.h"
 #include "data/DrawableObject.h"
@@ -21,6 +23,31 @@ namespace LuaFsm
         Transition
     };
 
+    struct StateData
+    {
+        std::string name;
+        std::string value = "nil";
+        std::string type = "any";
+        std::string comment;
+        nlohmann::json Serialize()
+        {
+            nlohmann::json json;
+            json["name"] = name;
+            json["value"] = value;
+            json["type"] = type;
+            json["comment"] = comment;
+            return json;
+        }
+        static StateData Deserialize(const nlohmann::json& json)
+        {
+            StateData data;
+            data.name = json["name"];
+            data.value = json["value"];
+            data.type = json["type"];
+            data.comment = json["comment"];
+            return data;
+        }
+    };
     
     class VisualNode
     {

@@ -84,7 +84,7 @@ namespace LuaFsm
             if (m_Shape == NodeShape::Ellipse)
             {
                 drawList->AddEllipseFilled(GetDrawPos(),  m_EllipseRadius, GetCurrentColor());
-                if (NodeEditor::Get()->GetCurrentFsm()->GetInitialState() == m_Id)
+                if (NodeEditor::Get()->GetCurrentFsm()->GetInitialStateId() == m_Id)
                     drawList->AddEllipse(GetDrawPos(), m_EllipseRadius, IM_COL32(0, 255, 0, 255));
                 else
                     drawList->AddEllipse(GetDrawPos(), m_EllipseRadius, GetBorderColor());
@@ -122,7 +122,7 @@ namespace LuaFsm
                     Math::AddVec2X(
                         Math::SubtractVec2Y(Math::AddVec2X(GetLastDrawPos(), m_Radius),
                             ImGui::CalcTextSize(object->GetName().c_str()).y * 0.5f),
-                        3), IM_COL32_WHITE, object->GetName().c_str());
+                        3), ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]), object->GetName().c_str());
             }
         }
         return this;
@@ -133,6 +133,29 @@ namespace LuaFsm
         if (ImGui::IsWindowHovered())
         {
             HighLight();
+            switch (m_Type)
+            {
+            case NodeType::State:
+                if (const auto state = editor->GetCurrentFsm()->GetState(m_Id); state && !state->GetDescription().empty())
+                {
+                    if (ImGui::BeginTooltip())
+                    {
+                        ImGui::Text(state->GetDescription().c_str());
+                        ImGui::EndTooltip();
+                    }
+                }
+                break;
+            case NodeType::Transition:
+                if (const auto trigger = editor->GetCurrentFsm()->GetTrigger(m_Id); trigger && !trigger->GetDescription().empty())
+                {
+                    if (ImGui::BeginTooltip())
+                    {
+                        ImGui::Text(trigger->GetDescription().c_str());
+                        ImGui::EndTooltip();
+                    }
+                }
+                break;
+            }
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                 editor->SetSelectedNode(this);
             if (editor->IsCreatingLink() && !IsSelected() && !ImGui::IsMouseDown(ImGuiMouseButton_Right))
@@ -166,6 +189,8 @@ namespace LuaFsm
                 }
                 editor->SetCreatingLink(false);
             }
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
+                editor->SetCreatingLink(false);
         }
         else if (!IsSelected())
             UnHighLight();
