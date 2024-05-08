@@ -12,6 +12,8 @@
 #include "imgui/NodeEditor.h"
 #include "imgui/ImFileDialog.h"
 #include "IO/FileReader.h"
+#include "imgui/ImGuiNotify.hpp"
+#include "imgui/IconsFontAwesome6.h"
 
 bool SHUTDOWN = false;
 bool SHOW_METRICS = false;
@@ -97,8 +99,6 @@ namespace LuaFsm
         
         AddFont("Cascadia_20",
             ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 20));
-        AddFont("Cascadia_18",
-            ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 18));
         AddFont("Cascadia_16",
             ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 16));
         AddFont("Cascadia_14",
@@ -106,9 +106,32 @@ namespace LuaFsm
         AddFont("Cascadia_12",
             ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 12));
         AddFont("Cascadia_10",
-            ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 10));
-        FONT = GetFont("Cascadia_18");
+        ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 10));
+        AddFont("Cascadia_18",
+            ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 18));
+        io.FontDefault = FONT = GetFont("Cascadia_18");
         NodeEditor::Get()->SetFont(GetFont("Cascadia_18"));
+        constexpr float baseFontSize = 18.0f; // Default font size
+        constexpr float iconFontSize = baseFontSize * 2.0f / 3.0f; // FontAwesome fonts need to have their sizes reduced by 2.0f/3.0f in order to align correctly
+
+        // Check if FONT_ICON_FILE_NAME_FAS is a valid path
+
+        if (const std::ifstream fontAwesomeFile(FONT_ICON_FILE_NAME_FAS); !fontAwesomeFile.good())
+        {
+            // If it's not good, then we can't find the font and should abort
+            std::cerr << "Could not find the FontAwesome font file." << '\n';
+            abort();
+        }
+
+        static constexpr ImWchar icons_ranges[] = {ICON_MIN_FA, ICON_MAX_16_FA, 0};
+        ImFontConfig iconsConfig;
+        iconsConfig.MergeMode = true;
+        iconsConfig.PixelSnapH = true;
+        iconsConfig.GlyphMinAdvanceX = iconFontSize;
+        AddFont("notificationFont",
+            ImGui::GetIO().Fonts->AddFontFromFileTTF(FONT_ICON_FILE_NAME_FAS, iconFontSize, &iconsConfig, icons_ranges));
+
+        
 
         m_TextEditor = std::make_shared<TextEditor>();
         auto palette = m_TextEditor->GetPalette();
@@ -165,8 +188,14 @@ namespace LuaFsm
     void Window::OnImGuiRender()
     {
         
-        //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.33f, 0.33f, 0.38f, 1.0f));
         const auto nodeEditor = NodeEditor::Get();
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 1.00f)); // Background color
+        ImGui::PushFont(m_Fonts["notificationFont"]);
+        ImGui::RenderNotifications();
+        ImGui::PopStyleColor(1);
+        ImGui::PopFont();
+
+        //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.33f, 0.33f, 0.38f, 1.0f));
         const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
         if (ImGui::BeginMainMenuBar())
         {
@@ -281,7 +310,10 @@ namespace LuaFsm
         if (ImGui::BeginPopup("Save FSM"))
         {
             if (!nodeEditor->GetCurrentFsm())
+            {
+                ImGui::EndPopup();
                 return;
+            }
             static std::string filePath;
             static std::string path;
             static std::string folder;
@@ -315,13 +347,7 @@ namespace LuaFsm
                 }
                 if (!filePath.empty())
                 {
-                    nlohmann::json j;
-                    if (nodeEditor->GetCurrentFsm())
-                        j = nodeEditor->GetCurrentFsm()->Serialize();
-                    //save file
-                    std::ofstream file(filePath);
-                    file << j.dump(4);
-                    file.close();
+                    nodeEditor->SaveFsm(filePath);
                     LAST_SAVE_PATH = path;
                     LAST_PATH = folder;
                     folder = "";
@@ -335,7 +361,10 @@ namespace LuaFsm
         if (ImGui::BeginPopup("Export Lua"))
         {
             if (!nodeEditor->GetCurrentFsm())
+            {
+                ImGui::EndPopup();
                 return;
+            }
             static std::string filePath;
             static std::string folder;
             if (filePath.empty())
@@ -365,9 +394,7 @@ namespace LuaFsm
                 }
                 if (!filePath.empty())
                 {
-                    std::ofstream file(filePath);
-                    file << nodeEditor->GetCurrentFsm()->GetLuaCode();
-                    file.close();
+                    nodeEditor->ExportLua(filePath);
                     LAST_EXPORT_PATH = filePath;
                     LAST_PATH = folder;
                     folder = "";
@@ -382,8 +409,10 @@ namespace LuaFsm
             ImGui::Text("Add FSM");
             static std::string fsmId;
             ImGui::InputText("FSM ID", &fsmId, 0);
+            ImGui::SetItemTooltip("Unique identifier for the FSM. This is used as the global variable name in Lua.");
             static std::string fsmName;
             ImGui::InputText("FSM Name", &fsmName, 0);
+            ImGui::SetItemTooltip("Just for visual purposes in this editor.");
             if (!fsmId.empty() && !fsmName.empty())
             {
                 if (ImGui::Button("Add"))
@@ -392,6 +421,9 @@ namespace LuaFsm
                     fsm->SetName(fsmName);
                     NodeEditor::Get()->SetCurrentFsm(fsm);
                     NodeEditor::Get()->DeselectAllNodes();
+                    LAST_OPEN_PATH = "";
+                    LAST_SAVE_PATH = "";
+                    LAST_EXPORT_PATH = "";
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::SameLine();
@@ -505,6 +537,7 @@ namespace LuaFsm
             ImGui::Text("Add State");
             static std::string stateId;
             ImGui::InputText("State ID", &stateId, 0);
+            ImGui::SetItemTooltip("Used for internal identification and must be unique. Be careful with choosing if you change it later you will need to refactor your lua code to maintain loading ability.");
             static std::string stateName;
             ImGui::InputText("State Name", &stateName, 0);
             if (!nodeEditor->GetCurrentFsm()->GetState(stateId) && !stateId.empty() && !stateName.empty())
@@ -556,7 +589,7 @@ namespace LuaFsm
                 const ImGuiID dockIdRight = dockspaceId;
 
                 ImGui::DockBuilderDockWindow("Canvas", dockIdLeft);
-                ImGui::DockBuilderDockWindow("Code", dockIdRight);
+                ImGui::DockBuilderDockWindow("Properties", dockIdRight);
 
                 ImGui::DockBuilderFinish(dockspaceId);
                 DOCK_SPACE_SET = true;
@@ -569,12 +602,47 @@ namespace LuaFsm
         ImGui::PushFont(nodeEditor->GetFont());
         ImGui::Begin("Canvas", nullptr,
             ImGuiWindowFlags_NoBringToFrontOnFocus
-            | ImGuiWindowFlags_NoScrollbar);
+            | ImGuiWindowFlags_NoScrollbar
+            | ImGuiWindowFlags_NoMove
+            );
         if (!NodeEditor::Get()->GetCurrentFsm())
             ImGui::End();
         else
         {
-
+            if (ImGui::IsWindowFocused() &&
+                ImGui::IsKeyPressed(ImGuiKey_S)
+                && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+            {
+                if (LAST_SAVE_PATH.empty())
+                    SAVE_FSM = true;
+                else
+                    nodeEditor->SaveFsm(LAST_SAVE_PATH);
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_F4))
+            {
+                if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
+                    nodeEditor->GetCurrentFsm()->UpdateFromFile(nodeEditor->GetCurrentFsm()->GetLinkedFile());
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_F5))
+            {
+                if (LAST_SAVE_PATH.empty())
+                    SAVE_FSM = true;
+                else
+                    nodeEditor->SaveFsm(LAST_SAVE_PATH);
+                if (!LAST_EXPORT_PATH.empty())
+                    nodeEditor->ExportLua(LAST_EXPORT_PATH);
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_F6))
+            {
+                if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
+                    nodeEditor->GetCurrentFsm()->UpdateFromFile(nodeEditor->GetCurrentFsm()->GetLinkedFile());
+                if (LAST_SAVE_PATH.empty())
+                    SAVE_FSM = true;
+                else
+                    nodeEditor->SaveFsm(LAST_SAVE_PATH);
+                if (!LAST_EXPORT_PATH.empty())
+                    nodeEditor->ExportLua(LAST_EXPORT_PATH);
+            }
             nodeEditor->SetCanvasPos(ImGui::GetWindowPos());
             nodeEditor->SetCanvasSize(ImGui::GetWindowSize());
             for (const auto& [key, state] : nodeEditor->GetCurrentFsm()->GetStates())
@@ -648,9 +716,10 @@ namespace LuaFsm
                 if (const auto fromNode = NodeEditor::Get()->GetSelectedNode(); fromNode && fromNode->GetType() == NodeType::Transition)
                 {
                     static std::string id;
-                    ImGui::InputText("id", &id);
+                    ImGui::InputText("New State ID", &id);
+                    ImGui::SetItemTooltip("Used for internal identification and must be unique. Be careful with choosing if you change it later you will need to refactor your lua code to maintain loading ability.");
                     static std::string name;
-                    ImGui::InputText("name", &name);
+                    ImGui::InputText("New State Name", &name);
                     if (!id.empty() && !name.empty() && !NodeEditor::Get()->GetCurrentFsm()->GetState(id) && ImGui::Button("Add State"))
                     {
                         const auto state = NodeEditor::Get()->GetCurrentFsm()->AddState(id);
@@ -688,9 +757,10 @@ namespace LuaFsm
                 if (const auto fromNode = NodeEditor::Get()->GetSelectedNode(); fromNode && fromNode->GetType() == NodeType::State)
                 {
                     static std::string id;
-                    ImGui::InputText("id", &id);
+                    ImGui::InputText("New Trigger ID", &id);
+                    ImGui::SetItemTooltip("Used for internal identification and must be unique. Be careful with choosing if you change it later you will need to refactor your lua code to maintain loading ability.");
                     static std::string name;
-                    ImGui::InputText("name", &name);
+                    ImGui::InputText("New Trigger Name", &name);
                     if (!id.empty() && !name.empty() && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id) && ImGui::Button("Add Trigger"))
                     {
                         const auto state = NodeEditor::Get()->GetCurrentFsm()->GetState(fromNode->GetId());
@@ -726,7 +796,8 @@ namespace LuaFsm
         ImGui::PopFont();
 
         // Code editor window
-        ImGui::Begin("Code", nullptr, ImGuiWindowFlags_NoBringToFrontOnFocus);
+        ImGui::Begin("Properties", nullptr, ImGuiWindowFlags_NoBringToFrontOnFocus
+            | ImGuiWindowFlags_NoMove);
         {
             if (const auto node = nodeEditor->GetSelectedNode(); node)
             {

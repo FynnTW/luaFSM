@@ -1,6 +1,9 @@
 ﻿#include "pch.h"
 #include "NodeEditor.h"
 
+#include <fstream>
+
+#include "ImGuiNotify.hpp"
 #include "Graphics/Window.h"
 
 namespace LuaFsm
@@ -76,11 +79,43 @@ namespace LuaFsm
         drawList->AddTriangleFilled(arrowTip, leftCorner, rightCorner, color);
     }
 
-    void NodeEditor::DrawConnection(VisualNode* fromNode, VisualNode* toNode)
+    void NodeEditor::DrawConnection(const VisualNode* fromNode, const VisualNode* toNode)
     {
         const auto fromPos = fromNode->GetFromPoint(toNode);
         const auto toPos = toNode->GetFromPoint(fromNode);
         DrawLine(fromPos, toPos);
+    }
+
+    void NodeEditor::ExportLua(const std::string& filePath) const
+    {
+        if (!m_Fsm)
+            return;
+        std::ofstream file(filePath);
+        if (!file.is_open())
+        {
+            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+            return;
+        }
+        file << m_Fsm->GetLuaCode();
+        file.close();
+        m_Fsm->SetLinkedFile(filePath);
+        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Exported file at: %s", filePath.c_str()});
+    }
+
+    void NodeEditor::SaveFsm(const std::string& filePath) const
+    {
+        if (!m_Fsm)
+            return;
+        const nlohmann::json j = m_Fsm->Serialize();
+        std::ofstream file(filePath);
+        if (!file.is_open())
+        {
+            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to save file at: %s", filePath.c_str()});
+            return;
+        }
+        file << j.dump(4);
+        file.close();
+        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Saved file at: %s", filePath.c_str()});
     }
 
     void NodeEditor::DeselectAllNodes()

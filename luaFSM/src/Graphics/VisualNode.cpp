@@ -1,6 +1,7 @@
 ﻿#include "pch.h"
 #include "VisualNode.h"
 
+#include "imgui_internal.h"
 #include "data/DrawableObject.h"
 #include "imgui/NodeEditor.h"
 
@@ -41,7 +42,7 @@ namespace LuaFsm
             ImGui::SetNextWindowSize(InitSizes2(), ImGuiCond_Always);
         if (m_TargetPosition.x < 0)
             m_TargetPosition = editor->GetNextNodePos(this);
-        ImVec2 adjustedPos = GetPosition();
+        const ImVec2 adjustedPos = GetPosition();
         if (adjustedPos.x < 0)
         {
             SetInvisible(true);
@@ -49,33 +50,40 @@ namespace LuaFsm
         }
         //adjustedPos = Math::AddVec2(editor->GetCanvasPos(), adjustedPos);
         SetInvisible(false);
-        bool force = false;
-        if (adjustedPos.x < editor->GetCanvasPos().x)
-        {
-            adjustedPos.x = editor->GetCanvasPos().x;
-            force = true;
-        }
-        if (adjustedPos.y < editor->GetCanvasPos().y)
-        {
-            adjustedPos.y = editor->GetCanvasPos().y;
-            force = true;
-        }
-        if (adjustedPos.x + GetSize().x > editor->GetCanvasSize().x)
-        {
-            adjustedPos.x = editor->GetCanvasSize().x - GetSize().x;
-            force = true;
-        }
-        if (adjustedPos.y + GetSize().y > editor->GetCanvasSize().y)
-        {
-            adjustedPos.y = editor->GetCanvasSize().y - GetSize().y;
-            force = true;
-        }
-        if (!Math::ImVec2Equal(m_LastPosition, adjustedPos) || force)
+        if (!Math::ImVec2Equal(m_LastPosition, adjustedPos))
             ImGui::SetNextWindowPos(adjustedPos);
         m_LastPosition = adjustedPos;
         if (m_WindowLabel == 0)
             m_WindowLabel = ++WINDOW_COUNT;
         const std::string label = "##Window" + std::to_string(m_WindowLabel);
+        const ImGuiWindow* existingWindow = ImGui::FindWindowByName(label.c_str());
+        if (const ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"); existingWindow && canvas)
+        {
+            bool needsClampToScreen = false;
+            ImVec2 targetPos = existingWindow->Pos;
+            if (existingWindow->Pos.x < canvas->Pos.x)
+            {
+                needsClampToScreen = true;
+                targetPos.x = canvas->Pos.x;
+            }
+            else if (existingWindow->Size.x + existingWindow->Pos.x > canvas->Size.x + canvas->Pos.x)
+            {
+                needsClampToScreen = true;
+                targetPos.x = canvas->Pos.x + canvas->Size.x - existingWindow->Size.x;
+            }
+            if (existingWindow->Pos.y < canvas->Pos.y)
+            {
+                needsClampToScreen = true;
+                targetPos.y = canvas->Pos.y;
+            }
+            else if (existingWindow->Size.y + existingWindow->Pos.y > canvas->Size.y + canvas->Pos.y)
+            {
+                needsClampToScreen = true;
+                targetPos.y = canvas->Pos.y + canvas->Size.y - existingWindow->Size.y;
+            }
+            if (needsClampToScreen)
+                ImGui::SetNextWindowPos(targetPos, ImGuiCond_Always);
+        }
         ImGui::Begin(label.c_str(), nullptr, NodeEditor::nodeWindowFlags);
         {
             auto drawList = ImGui::GetWindowDrawList();

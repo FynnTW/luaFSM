@@ -9,6 +9,7 @@
 #include "Log.h"
 #include "Graphics/Window.h"
 #include "imgui/NodeEditor.h"
+#include "IO/FileReader.h"
 
 namespace LuaFsm
 {
@@ -110,7 +111,17 @@ namespace LuaFsm
         for (const auto& event : json["events"])
             state->AddEvent(event);
         state->GetNode()->SetTargetPosition({json["positionX"].get<float>(), json["positionY"].get<float>()});
+        state->UpdateEditors();
         return state;
+    }
+
+    void FsmState::UpdateEditors()
+    {
+        m_OnInitEditor.SetText(m_OnInit);
+        m_OnEnterEditor.SetText(m_OnEnter);
+        m_OnUpdateEditor.SetText(m_OnUpdate);
+        m_OnExitEditor.SetText(m_OnExit);
+        m_LuaCodeEditor.SetText(GetLuaCode());
     }
 
     void FsmState::AddTrigger(const std::string& key, const FsmTriggerPtr& value)
@@ -154,15 +165,53 @@ namespace LuaFsm
     bool DELETE_STATE = false;
     bool EDIT_DATA_DESCR = false;
     std::map<std::string, StateData> tempData;
+
+    //std::string capturingRegexState = "\\s*([\\s\\S]*?)end(?!\\s*end\b)(?=(\\s*---@return|\\s*---@param|\\s*function|\\s*$))";
+    std::string CAPTURING_REGEX_STATE = R"(\s*([\s\S]*?)\s*end---@endFunc)";
+    
+    void FsmState::UpdateFromFile(const std::string& filePath)
+    {
+        const std::string code = FileReader::ReadAllText(filePath);
+        if (code.empty())
+            return;
+        const std::string onInitFuncName = fmt::format("{0}:onInit\\(\\)", m_Id);
+        const std::regex onInitRegex(onInitFuncName + CAPTURING_REGEX_STATE);
+        if (std::smatch match; std::regex_search(code, match, onInitRegex))
+        {
+            m_OnInit = FileReader::RemoveStartingTab(match[1].str());
+        }
+        const std::string onUpdateFuncName = fmt::format("{0}:onUpdate\\(.*\\)", m_Id);
+        const std::regex onUpdateRegex(onUpdateFuncName + CAPTURING_REGEX_STATE);
+        if (std::smatch match; std::regex_search(code, match, onUpdateRegex))
+        {
+            m_OnUpdate = FileReader::RemoveStartingTab(match[1].str());
+        }
+        const std::string onEnterFuncName = fmt::format("{0}:onEnter\\(\\)", m_Id);
+        const std::regex onEnterRegex(onEnterFuncName + CAPTURING_REGEX_STATE);
+        if (std::smatch match; std::regex_search(code, match, onEnterRegex))
+        {
+            m_OnEnter = FileReader::RemoveStartingTab(match[1].str());
+        }
+        const std::string onExitFuncName = fmt::format("{0}:onExit\\(\\)", m_Id);
+        const std::regex onExitRegex(onExitFuncName + CAPTURING_REGEX_STATE);
+        if (std::smatch match; std::regex_search(code, match, onExitRegex))
+        {
+            m_OnExit = FileReader::RemoveStartingTab(match[1].str());
+        }
+        UpdateEditors();
+    }
     
     void FsmState::DrawProperties()
     {
         std::string id = GetId();
-        if (ImGui::Button(MakeIdString("Refresh").c_str()) || m_LuaCodeEditor.GetText().empty())
+        if (ImGui::Button(MakeIdString("Refresh Code").c_str()) || m_LuaCodeEditor.GetText().empty())
             m_LuaCodeEditor.SetText(GetLuaCode());
+        if (auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty()
+            && ImGui::Button(MakeIdString("Refresh From File").c_str()))
+                UpdateFromFile(linkedFile);
         if (ImGui::BeginTabBar(MakeIdString("Node Properties").c_str()))
         {
-            if (ImGui::BeginTabItem(MakeIdString("Properties").c_str()))
+            if (ImGui::BeginTabItem(MakeIdString("State Properties").c_str()))
             {
                 ImGui::Text("ID");
                 std::string idLabel = "##ID" + GetId();
@@ -690,7 +739,7 @@ namespace LuaFsm
             for (const auto& line : m_OnInitEditor.GetTextLines())
                 code += indentTabs + fmt::format("\t{0}\n", line);
         }
-        code += indentTabs + fmt::format("end\n");
+        code += indentTabs + fmt::format("end---@endFunc\n");
         for (const auto& [key, value] : m_OnUpdateArguments)
             code += indentTabs + fmt::format("\n---@param {0} {1}\n", key, value);
         code += indentTabs + fmt::format("function {0}:onUpdate(", m_Id);
@@ -710,7 +759,7 @@ namespace LuaFsm
             for (const auto& line : m_OnUpdateEditor.GetTextLines())
                 code += indentTabs + fmt::format("\t{0}\n", line);
         }
-        code += indentTabs + fmt::format("end\n");
+        code += indentTabs + fmt::format("end---@endFunc\n");
         code += indentTabs + fmt::format("\nfunction {0}:onEnter()", m_Id);
         if (m_OnEnter.empty())
             code += indentTabs + fmt::format(" ");
@@ -720,7 +769,7 @@ namespace LuaFsm
             for (const auto& line : m_OnEnterEditor.GetTextLines())
                 code += indentTabs + fmt::format("\t{0}\n", line);
         }
-        code += indentTabs + fmt::format("end\n");
+        code += indentTabs + fmt::format("end---@endFunc\n");
         code += indentTabs + fmt::format("\nfunction {0}:onExit()", m_Id);
         if (m_OnExit.empty())
             code += indentTabs + fmt::format(" ");
@@ -730,12 +779,9 @@ namespace LuaFsm
             for (const auto& line : m_OnExitEditor.GetTextLines())
                 code += indentTabs + fmt::format("\t{0}\n", line);
         }
-        code += indentTabs + fmt::format("end\n");
-        for (const auto& [key, value] : m_Triggers)
-        {
+        code += indentTabs + fmt::format("end---@endFunc\n");
+        for (const auto& value : m_Triggers | std::views::values)
             code += value->GetLuaCode() + "\n";
-            code += fmt::format("{0}:registerTrigger({1})\n", m_Id, key);
-        }
         return code;
     }
     

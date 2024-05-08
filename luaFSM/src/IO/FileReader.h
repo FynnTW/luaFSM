@@ -30,6 +30,7 @@ namespace LuaFsm
         static void RemoveLuaComments(std::string& line);
         static void RemoveTabs(std::string& line);
         static std::string ReadAllText(const std::string& path);
+        static std::string RemoveStartingTab(const std::string& input);
 
     private:
         std::ifstream m_File;

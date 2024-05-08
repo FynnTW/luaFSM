@@ -139,6 +139,9 @@
     <ClInclude Include="src\Graphics\Math.h" />
     <ClInclude Include="src\Graphics\VisualNode.h" />
     <ClInclude Include="src\Graphics\Window.h" />
+    <ClInclude Include="src\imgui\fa_solid_900.h" />
+    <ClInclude Include="src\imgui\IconsFontAwesome6.h" />
+    <ClInclude Include="src\imgui\ImGuiNotify.hpp" />
     <ClInclude Include="src\IO\FileReader.h" />
     <ClInclude Include="src\Log.h" />
     <ClInclude Include="src\data\DrawableObject.h" />

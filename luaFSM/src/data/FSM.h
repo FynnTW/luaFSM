@@ -42,9 +42,13 @@ namespace LuaFsm
         FsmTriggerPtr GetTrigger(const std::string& key);
         void RemoveTrigger(const std::string& trigger);
         void ChangeTriggerId(const std::string& oldId, const std::string& newId);
+
+        std::string GetLinkedFile() const { return m_LinkedFile; }
+        void SetLinkedFile(const std::string& linkedFile) { m_LinkedFile = linkedFile; }
         
         std::string GetLuaCode();
-        
+        void UpdateFromFile(const std::string& filePath);
+
         void DrawProperties();
         
         nlohmann::json Serialize() const;
@@ -53,6 +57,7 @@ namespace LuaFsm
         std::unordered_map<std::string, FsmStatePtr> m_States{};
         std::unordered_map<std::string, FsmTriggerPtr> m_Triggers{};
         std::string m_InitialStateId;
+        std::string m_LinkedFile = "";
         TextEditor m_LuaCodeEditor;
     };
 }

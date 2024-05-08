@@ -16,7 +16,9 @@ namespace LuaFsm
     {
     public:
         FsmTrigger(const std::string& id);
-        
+        void UpdateEditors();
+        void UpdateFromFile(const std::string& filePath);
+
         [[nodiscard]] virtual std::string GetId() const override { return m_Id; }
         void virtual SetId(const std::string& id) override;
         

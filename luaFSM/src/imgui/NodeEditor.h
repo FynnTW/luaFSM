@@ -41,7 +41,8 @@ namespace LuaFsm
         //Draw lines
         static void DrawLine(ImVec2 fromPos, ImVec2 toPos, ImU32 color = IM_COL32_WHITE, float thickness = 2.0f, float arrowHeadWidth= 10.0f,
                              float arrowHeadLength= 15.0f);
-        static void DrawConnection(VisualNode* fromNode, VisualNode* toNode);
+        static void DrawConnection(const VisualNode* fromNode, const VisualNode* toNode);
+        void ExportLua(const std::string& filePath) const;
 
         void SetCurrentFsm(const FsmPtr& fsm) { m_Fsm = fsm; }
         [[nodiscard]] FsmPtr GetCurrentFsm() const { return m_Fsm; }
@@ -53,6 +54,8 @@ namespace LuaFsm
 
         [[nodiscard]] bool ShowFsmProps() const { return m_ShowFsmProps; }
         void SetShowFsmProps(const bool showFsmProps) { m_ShowFsmProps = showFsmProps; }
+
+        void SaveFsm(const std::string& filePath) const;
         
     public:
         inline static uint32_t nodeWindowFlags = ImGuiWindowFlags_NoCollapse

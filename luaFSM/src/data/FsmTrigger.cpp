@@ -9,6 +9,8 @@
 #include "imgui/NodeEditor.h"
 
 #include "Graphics/Window.h"
+#include "imgui/ImGuiNotify.hpp"
+#include "IO/FileReader.h"
 
 namespace LuaFsm
 {
@@ -32,6 +34,44 @@ namespace LuaFsm
         m_Node.SetBorderColor(IM_COL32(255, 255, 255, 255));
         m_Node.SetType(NodeType::Transition);
         m_Node.SetShape(NodeShape::Circle);
+    }
+
+    void FsmTrigger::UpdateEditors()
+    {
+        m_ConditionEditor.SetText(m_Condition);
+        m_OnTrueEditor.SetText(m_OnTrue);
+        m_OnFalseEditor.SetText(m_OnFalse);
+        m_LuaCodeEditor.SetText(GetLuaCode());
+    }
+
+
+    //std::string capturingRegex = "\\s*([\\s\\S]*?)end(?!\\s*end\\b)(?=(\\s*---@return|\\s*---@param|\\s*function|\\s*$))";
+    std::string CAPTURING_REGEX = R"(\s*([\s\S]*?)\s*end---@endFunc)";
+
+    void FsmTrigger::UpdateFromFile(const std::string& filePath)
+    {
+        const std::string code = FileReader::ReadAllText(filePath);
+        if (code.empty())
+            return;
+        const std::string conditionFuncName = fmt::format("{0}:condition\\(\\)", m_Id);
+        const std::regex conditionRegex(conditionFuncName + CAPTURING_REGEX);
+        if (std::smatch conditionMatch; std::regex_search(code, conditionMatch, conditionRegex))
+        {
+            m_Condition = FileReader::RemoveStartingTab(conditionMatch[1].str());
+        }
+        const std::string onTrueFuncName = fmt::format("{0}:onTrue\\(\\)", m_Id);
+        const std::regex onTrueRegex(onTrueFuncName + CAPTURING_REGEX);
+        if (std::smatch onTrueMatch; std::regex_search(code, onTrueMatch, onTrueRegex))
+        {
+            m_OnTrue = FileReader::RemoveStartingTab(onTrueMatch[1].str());
+        }
+        const std::string onFalseFuncName = fmt::format("{0}:onFalse\\(\\)", m_Id);
+        const std::regex onFalseRegex(onFalseFuncName + CAPTURING_REGEX);
+        if (std::smatch onFalseMatch; std::regex_search(code, onFalseMatch, onFalseRegex))
+        {
+            m_OnFalse = FileReader::RemoveStartingTab(onFalseMatch[1].str());
+        }
+        UpdateEditors();
     }
 
     FsmState* FsmTrigger::GetCurrentState()
@@ -130,11 +170,15 @@ namespace LuaFsm
     void FsmTrigger::DrawProperties()
     {
         std::string id = GetId();
-        if (ImGui::Button(MakeIdString("Refresh").c_str()) || m_LuaCodeEditor.GetText().empty())
+        if (ImGui::Button(MakeIdString("Refresh Code").c_str()) || m_LuaCodeEditor.GetText().empty())
             m_LuaCodeEditor.SetText(GetLuaCode());
+        ImGui::SameLine();
+        if (auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty()
+            && ImGui::Button(MakeIdString("Refresh From File").c_str()))
+            UpdateFromFile(linkedFile);
         if (ImGui::BeginTabBar(MakeIdString("Node Properties").c_str()))
         {
-            if (ImGui::BeginTabItem(MakeIdString("Properties").c_str()))
+            if (ImGui::BeginTabItem(MakeIdString("Trigger Properties").c_str()))
             {
                 ImGui::Text("ID");
                 std::string idLabel = "##ID" + GetId();
@@ -407,6 +451,7 @@ namespace LuaFsm
         trigger->SetOnTrue(json["onTrue"].get<std::string>());
         trigger->SetOnFalse(json["onFalse"].get<std::string>());
         trigger->GetNode()->SetTargetPosition({json["positionX"].get<float>(), json["positionY"].get<float>()});
+        trigger->UpdateEditors();
         return trigger;
     }
 
@@ -454,6 +499,22 @@ namespace LuaFsm
         code += indentTabs + fmt::format("\t---Name of the state this trigger leads to\n");
         code += indentTabs + fmt::format("\t---@type string\n");
         code += indentTabs + fmt::format("\tnextStateId = \"{0}\",\n", m_NextStateId);
+        code += indentTabs + fmt::format("\t---Data the trigger inherits\n");
+        code += indentTabs + fmt::format("\t---@type table<string, any>\n");
+        code += indentTabs + fmt::format("\tdata = {{\n");
+        for (const auto& [key, data] : m_Data)
+        {
+            if (!data.comment.empty())
+                code += indentTabs + fmt::format("\t\t---{0}\n", data.comment);
+            code += indentTabs + fmt::format("\t\t---@type {0}\n", data.type);
+            if (data.type == "string")
+                code += indentTabs + fmt::format("\t\t{0} = \"{1}\",\n", key, data.value);
+            else
+            {
+                code += indentTabs + fmt::format("\t\t{0} = {1},\n", key, data.value);
+            }
+        }
+        code += indentTabs + fmt::format("\t}},\n");
         code += indentTabs + fmt::format("}})\n");
         code += indentTabs + fmt::format("\n---@return boolean isTrue\n");
         code += indentTabs + fmt::format("function {0}:condition()", m_Id);
@@ -465,7 +526,7 @@ namespace LuaFsm
             for (const auto& line : m_ConditionEditor.GetTextLines())
                 code += indentTabs + fmt::format("\t{0}\n", line);
         }
-        code += indentTabs + fmt::format("end\n");
+        code += indentTabs + fmt::format("end---@endFunc\n");
         code += indentTabs + fmt::format("\nfunction {0}:onTrue()", m_Id);
         if (m_OnTrue.empty())
             code += indentTabs + fmt::format(" ");
@@ -475,7 +536,7 @@ namespace LuaFsm
             for (const auto& line : m_OnTrueEditor.GetTextLines())
                 code += indentTabs + fmt::format("\t{0}\n", line);
         }
-        code += indentTabs + fmt::format("end\n");
+        code += indentTabs + fmt::format("end---@endFunc\n");
         code += indentTabs + fmt::format("\nfunction {0}:onFalse()", m_Id);
         if (m_OnFalse.empty())
             code += indentTabs + fmt::format(" ");
@@ -485,7 +546,7 @@ namespace LuaFsm
             for (const auto& line : m_OnFalseEditor.GetTextLines())
                 code += indentTabs + fmt::format("\t{0}\n", line);
         }
-        code += indentTabs + fmt::format("end\n");
+        code += indentTabs + fmt::format("end---@endFunc\n");
         return code;
     }
 }

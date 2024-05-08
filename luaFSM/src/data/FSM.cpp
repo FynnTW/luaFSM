@@ -1,5 +1,8 @@
 ﻿#include "pch.h"
 #include "FSM.h"
+
+#include <codecvt>
+
 #include "FsmTrigger.h"
 #include <spdlog/fmt/bundled/format.h>
 
@@ -10,6 +13,10 @@
 #include "imgui/NodeEditor.h"
 #include "IO/FileReader.h"
 #include "json.hpp"
+#include "Log.h"
+#include <shellapi.h>
+
+#include "imgui/ImGuiNotify.hpp"
 
 namespace LuaFsm
 {
@@ -86,15 +93,17 @@ namespace LuaFsm
             return state.get();
         return nullptr;
     }
-
+    
     void Fsm::DrawProperties()
     {
         std::string id = GetId();
-        if (ImGui::Button("Refresh") || m_LuaCodeEditor.GetText().empty())
+        if (ImGui::Button("Refresh Code") || m_LuaCodeEditor.GetText().empty())
             m_LuaCodeEditor.SetText(GetLuaCode());
+        if (const auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty() && ImGui::Button("Refresh From File"))
+            UpdateFromFile(linkedFile);
         if (ImGui::BeginTabBar("FSM Properties"))
         {
-            if (ImGui::BeginTabItem("Properties"))
+            if (ImGui::BeginTabItem("FSM Properties"))
             {
                 
                 ImGui::InputText("Id", &id);
@@ -108,6 +117,19 @@ namespace LuaFsm
                 }
                 if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                     NodeEditor::Get()->SetSelectedNode(NodeEditor::Get()->GetNode(GetInitialStateId()));
+                ImGui::Separator();
+                ImGui::Text("Linked Lua File: ");
+                ImGui::SameLine();
+                if (!m_LinkedFile.empty())
+                {
+                    ImGui::Selectable(m_LinkedFile.c_str());
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    {
+                        ShellExecuteA(nullptr, "open", m_LinkedFile.c_str(), nullptr, nullptr, SW_SHOWDEFAULT);
+                    }
+                }
+                else
+                    ImGui::Text("Export once to link a file!");
                 ImGui::Separator();
                 m_LuaCodeEditor.SetPalette(Window::GetPalette());
                 m_LuaCodeEditor.Render("Lua Code");
@@ -191,14 +213,24 @@ namespace LuaFsm
         for (const auto& [key, state] : m_States)
         {
             for (const auto& [id, trigger] : state->GetTriggers())
-                code += fmt::format("{0}:registerTrigger({1})\n", state->GetId(), id);
-            code += fmt::format("self:registerState({0})\n", key);
+                code += fmt::format("\t{0}:registerTrigger({1})\n", state->GetId(), id);
+            code += fmt::format("\tself:registerState({0})\n", key);
             
         }
-        code += fmt::format("self:setInitialState({0})\n", m_InitialStateId);
+        code += fmt::format("\tself:setInitialState({0})\n", m_InitialStateId);
         code += fmt::format("end\n");
         
         return code;
+    }
+
+    void Fsm::UpdateFromFile(const std::string& filePath)
+    {
+        for (const auto& state : m_States | std::views::values)
+            state->UpdateFromFile(filePath);
+        for (const auto& trigger : m_Triggers | std::views::values)
+            trigger->UpdateFromFile(filePath);
+        m_LuaCodeEditor.SetText(GetLuaCode());
+        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Updated from file: %s", filePath.c_str()});
     }
 
     void Fsm::ChangeTriggerId(const std::string& oldId, const std::string& newId)

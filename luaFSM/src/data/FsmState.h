@@ -42,6 +42,7 @@ namespace LuaFsm
         void AddTrigger(const std::string& key, const FsmTriggerPtr& value);
         FsmTriggerPtr AddTrigger(const std::string& key);
         [[nodiscard]] std::string MakeIdString(const std::string& name) const;
+        void UpdateFromFile(const std::string& filePath);
         void DrawProperties();
         void AddTrigger(const FsmTriggerPtr& value);
         FsmTriggerPtr GetTrigger(const std::string& key);
@@ -71,6 +72,7 @@ namespace LuaFsm
         nlohmann::json Serialize();
         void ChangeTriggerId(const std::string& oldId, const std::string& newId);
         static std::shared_ptr<FsmState> Deserialize(const nlohmann::json& json);
+        void UpdateEditors();
 
     private:
         VisualNode m_Node{};
