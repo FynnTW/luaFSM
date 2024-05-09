@@ -48,7 +48,7 @@ namespace LuaFsm
 
         static std::regex IdRegexClass(const std::string &classType, const std::string &className)
         {
-            const auto string = fmt::format("---@{0}\\s+{1})", classType, className);
+            const auto string = fmt::format("---@{0}\\s+{1}", classType, className);
             std::regex regex(string);
             return regex;
         }

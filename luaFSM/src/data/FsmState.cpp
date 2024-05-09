@@ -320,7 +320,6 @@ namespace LuaFsm
         if (ImGui::Button(MakeIdString("Delete State").c_str()))
             DELETE_STATE = true;
         ImGui::SetItemTooltip("This doesn't delete it from your lua file! Delete it manually!");
-        ImGui::SameLine();
         ImGui::PopStyleColor();
         ImGui::Separator();
         if (ImGui::BeginTabBar(MakeIdString("Node Properties").c_str()))
@@ -360,14 +359,14 @@ namespace LuaFsm
                     ImGui::EndListBox();
                 }
                 ImGui::Separator();
-                ImGui::Text("OnUpdate:");
-                Window::DrawTextEditor(m_OnUpdateEditor, m_OnUpdate);
+                ImGui::Text("OnEnter:");
+                Window::DrawTextEditor(m_OnEnterEditor, m_OnEnter);
                 ImGui::EndTabItem();
             }
             
-            if (ImGui::BeginTabItem(MakeIdString("OnEnter").c_str()))
+            if (ImGui::BeginTabItem(MakeIdString("OnUpdate").c_str()))
             {
-                Window::DrawTextEditor(m_OnEnterEditor, m_OnEnter);
+                Window::DrawTextEditor(m_OnUpdateEditor, m_OnUpdate);
                 ImGui::EndTabItem();
             }
             
