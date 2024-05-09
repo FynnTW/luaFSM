@@ -32,9 +32,11 @@ FSM = {
     ---@type string
     initialStateId = nil,
 
-    ---Events that the FSM listens to
-    ---@type table<string, boolean>
-    updateEvents = nil,
+    ---@type table
+    data = {
+
+    }
+
 } FSM.__index = FSM
 
 ------------------------------------------------
@@ -47,13 +49,11 @@ FSM = {
 function FSM:new(o)
     -- Make sure the fields are empty so they arent drawn from the metatable
     o = o or {
-        --[[]]name = "",
+        name = "",
         id = "",
         states = {},
-        updateEvents = {},
     }
     o.states = o.states or {}
-    o.updateEvents = o.updateEvents or {}
     --If this is updating an existing object, make sure the states are FSM_STATE objects
     --This will make compatible when reloading the script
     if o.states then
@@ -81,7 +81,7 @@ end
 ---@param state table
 function FSM:registerState(state)
     --State must have an ID and events
-    if not state.id or state.id == "" or not state.events or #state.events == 0 then
+    if not state.id or state.id == "" then
         return
     end
     if not state.name or state.name == "" then state.name = state.id end
@@ -89,17 +89,6 @@ function FSM:registerState(state)
     --Create a new FSM_STATE object
     self.states[state.id] = FSM_STATE:new(state)
     self.states[state.id].FSM = self
-
-    --Fire the onInit function of the state
-    self.states[state.id]:onInit()
-
-    --If this is the first state, set it as the initial state, so that there is always a state to start with
-    --if not self.currentState then
-    --    log("Setting initial state to " .. state.name, logLevel.TRACE)
-    --    self.initialState = self.states[state.id]
-    --    self.currentState = self.initialState
-    --    self.initialState:registerEvents()
-    --end
 end
 
 function FSM:setInitialState(stateId)
@@ -108,30 +97,6 @@ function FSM:setInitialState(stateId)
     if not state then return end
     self.initialState = state
     self.currentState = state
-    self.initialState:registerEvents()
-end
-
---- Register events ---
-
----Register a state with the FSM
----@param eventName string
-function FSM:registerEvent(eventName)
-
-    callbacks[eventName][self.id] = bind(self, self.onUpdate)
-
-    --This is used to keep track of which events the FSM is listening to
-    self.updateEvents[eventName] = true
-end
-
----Remove an event from the FSM
----@param eventName string
-function FSM:removeEvent(eventName)
-
-    if not self.updateEvents[eventName] then return end
-
-    callbacks[eventName][self.id] = nil
-
-    self.updateEvents[eventName] = false
 end
 
 ------------------------------------------------
@@ -146,7 +111,7 @@ function FSM:onUpdate(...)
     self.currentState:onUpdate(...)
 
     --Evaluate the triggers of the current state
-    self.currentState:evaluateTriggers()
+    self.currentState:evaluateConditions()
 end
 
 ---Change the state of the FSM
@@ -158,14 +123,8 @@ function FSM:changeState(newState)
         self.currentState:onExit()
     end
 
-    --Remove the events of the previous state
-    self.currentState:removeEvents()
-
     --Set the new state as the current state
     self.currentState = newState
-
-    --Register the events of the new state
-    self.currentState:registerEvents()
 
     --Fire the onEnter function of the new state
     self.currentState:onEnter()
@@ -213,10 +172,6 @@ FSM_STATE = {
     ---@type string
     description = "",
 
-    ---Function called when the state is initialized
-    ---@type function
-    onInit = function(...) end,
-
     ---Function called when the state is entered
     ---@type function
     onEnter = function(...) end,
@@ -229,21 +184,13 @@ FSM_STATE = {
     ---@type function
     onExit = function(...) end,
 
-    ---Triggers of the state (Conditions to change state)
-    ---@type table<string, FSM_TRIGGER>
-    triggers = nil,
-
-    ---Data the state holds
-    ---@type table<string, any>
-    data = nil,
+    ---Conditions to change state
+    ---@type table<string, FSM_CONDITION>
+    links = nil,
 
     ---FSM the state belongs to
     ---@type FSM
     FSM = nil,
-
-    ---Events the state listens to
-    ---@type table<integer, string>
-    events = nil
 
 } FSM_STATE.__index = FSM_STATE
 
@@ -256,19 +203,15 @@ FSM_STATE = {
 ---@return FSM_STATE newObject
 function FSM_STATE:new(o)
     -- Make sure the fields are empty so they arent drawn from the metatable
-    -- And make sure the triggers are FSM_TRIGGER objects
+    -- And make sure the conditionds are FSM_CONDITION objects
     o = o or {
-        triggers = {},
-        events = {},
-        data = {},
+        links = {},
     }
-    o.triggers = o.triggers or {}
-    o.events = o.events or {}
-    o.data = o.data or {}
-    if o.triggers then
-        for k, v in pairs(o.triggers) do
-            if getmetatable(v) ~= FSM_TRIGGER then
-                o.triggers[k] = FSM_TRIGGER:new(v)
+    o.links = o.links or {}
+    if o.links then
+        for k, v in pairs(o.links) do
+            if getmetatable(v) ~= FSM_CONDITION then
+                o.links[k] = FSM_CONDITION:new(v)
             end
         end
     end
@@ -284,64 +227,44 @@ end
 ------------------------------------------------
 
 ---Register a trigger with a state
----@param trigger FSM_TRIGGER
-function FSM_STATE:registerTrigger(trigger)
-    if not trigger.id then return end
+---@param condition FSM_CONDITION
+function FSM_STATE:registerCondition(condition)
+    if not condition.id then return end
 
     --Register the trigger with the state
-    self.triggers[trigger.id] = FSM_TRIGGER:new(trigger)
+    self.links[condition.id] = FSM_CONDITION:new(condition)
 
     --Set the current state of the trigger to this state
-    trigger.currentState = self
+    condition.currentState = self
 
-end
-
----Register events ---
-
----Register the events of the state with the FSM
-function FSM_STATE:registerEvents()
-
-    --Loop through the events of the state and register them with the FSM
-    for _, event in pairs(self.events) do
-        self.FSM:registerEvent(event)
-    end
-end
-
----Remove the events of the state from the FSM
-function FSM_STATE:removeEvents()
-
-    --Loop through the events of the state and remove them from the FSM
-    for _, event in pairs(self.events) do
-        self.FSM:removeEvent(event)
-    end
 end
 
 ------------------------------------------------
 --FSM State flow
 ------------------------------------------------
 
----Evaluate the triggers of the state
-function FSM_STATE:evaluateTriggers()
+---Evaluate the conditions of the state
+function FSM_STATE:evaluateConditions()
 
     ---If a trigger is true, it will be stored here
-    ---@type FSM_TRIGGER
-    local trueTrigger = nil
+    ---@type FSM_CONDITION
+    local trueCondition = nil
 
     ---Keep track of the highest priority of the triggers, initialize to a very low number
     local highestPriority = -1000000
 
     ---Loop through the triggers and evaluate them
-    for _, trigger in pairs(self.triggers) do
-        if trigger:evaluate(self.data) and trigger.priority > highestPriority then
-            trueTrigger = trigger
-            highestPriority = trigger.priority
+    for _, condition in pairs(self.links) do
+        if condition:evaluate() and condition.priority > highestPriority then
+            trueCondition = condition
+            highestPriority = condition.priority
         end
     end
 
-    if not trueTrigger then return end
+    if not trueCondition then return end
 
     ---Get the next state of the true and highest priority trigger
-    local nextState = trueTrigger:getNextState()
+    local nextState = trueCondition:getNextState()
 
     ---Change the state of the FSM
     if nextState then
@@ -360,72 +283,58 @@ end
 
 ---------------------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------------------
--- FSM Trigger
+-- FSM Condition
 ---------------------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------------------
 
----Base FSM Trigger class
----@class FSM_TRIGGER
-FSM_TRIGGER = {
+---Base FSM Condition class
+---@class FSM_CONDITION
+FSM_CONDITION = {
 
-    ---Name of the trigger
+    ---Name of the condition
     ---@type string
     name = "",
 
-    ---ID of the trigger
+    ---ID of the condition
     ---@type string
     id = "",
 
-    ---Description of the trigger
+    ---Description of the condition
     ---@type string
     description = "",
 
-    ---Priority of the trigger
+    ---Priority of the condition
     ---@type integer
     priority = 0,
 
-    ---Condition to evaluate the trigger
+    ---Condition to evaluate the condition
     ---@type function
     condition = function(...) end,
-
-    ---Function called when the trigger is true
-    ---@type function
-    onTrue = function(...) end,
-
-    ---Function called when the trigger is false
-    ---@type function
-    onFalse = function(...) end,
-
-    ---data for the trigger evaluation
-    ---@type table<string, any>
-    data = nil,
 
     ---ID of the next state
     ---@type string
     nextStateId = "",
 
-    ---Next state of the trigger
+    ---Next state of the condition
     ---@type FSM_STATE
     nextState = nil,
 
-    ---Current state of the trigger
+    ---Current state of the condition
     ---@type FSM_STATE
     currentState = nil,
-} FSM_TRIGGER.__index = FSM_TRIGGER
+} FSM_CONDITION.__index = FSM_CONDITION
 
 ------------------------------------------------
 --Constructor
 ------------------------------------------------
 
----Constructor for FSM Trigger
----@param o FSM_TRIGGER
----@return FSM_TRIGGER
-function FSM_TRIGGER:new(o)
+---Constructor for FSM condition
+---@param o FSM_CONDITION
+---@return FSM_CONDITION
+function FSM_CONDITION:new(o)
     -- Make sure the fields are empty so they arent drawn from the metatable
     o = o or {
-        data = {},
     }
-    o.data = o.data or {}
     if o.currentState and getmetatable(o.currentState) ~= FSM_STATE then
         setmetatable(o.currentState, FSM_STATE)
     end
@@ -437,53 +346,31 @@ function FSM_TRIGGER:new(o)
 end
 
 ------------------------------------------------
---FSM Trigger flow
-------------------------------------------------
+--FSM Condition flow
+-----------------------------------------------
 
----Set the data of the trigger, getting them from the state's data
----@param data table Data passed on from the state 
-function FSM_TRIGGER:setData(data)
-
-    for k, v in pairs(self.data) do
-        --Set the argument to the data from the state
-        self.data[k] = data[k]
-    end
-
-end
-
----Evaluate the trigger
----@param data table Data passed on from the state
+---Evaluate the condition
 ---@return boolean isTrue
-function FSM_TRIGGER:evaluate(data)
-
-    --Set the data of the trigger
-    self:setData(data)
-
-    --Evaluate the condition of the trigger
-    if self:condition() then
-        self:onTrue()
-        return true
-    else
-        self:onFalse()
-        return false
-    end
+function FSM_CONDITION:evaluate()
+    --Evaluate the condition of the condition
+    return self:condition()
 end
 
 ------------------------------------------------
 --Helper functions
 ------------------------------------------------
 
----Get the next state of the trigger, if it hasn't been set yet
----There is both a string and an object so that you can declare triggers without having to have made the state object yet
+---Get the next state of the Condition, if it hasn't been set yet
+---There is both a string and an object so that you can declare conditions without having to have made the state object yet
 ---@return FSM_STATE
-function FSM_TRIGGER:getNextState()
+function FSM_CONDITION:getNextState()
     if not self.nextState then
         self.nextState = self.currentState.FSM.states[self.nextStateId]
     end
     return self.nextState
 end
 
----Helper function to fully print the trigger object
-function FSM_TRIGGER:debug()
+---Helper function to fully print the Condition object
+function FSM_CONDITION:debug()
     print(inspect(self))
 end

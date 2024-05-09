@@ -17,6 +17,8 @@ namespace LuaFsm
     public:
         FsmTrigger(const std::string& id);
         void UpdateEditors();
+        static std::vector<std::shared_ptr<FsmTrigger>> CreateFromFile(const std::string& filePath);
+        std::string GetExportLuaCode();
         void UpdateFromFile(const std::string& filePath);
 
         [[nodiscard]] virtual std::string GetId() const override { return m_Id; }
@@ -37,11 +39,8 @@ namespace LuaFsm
         [[nodiscard]] const std::string& GetCondition() const { return m_Condition; }
         void SetCondition(const std::string& condition) { m_Condition = condition; }
         
-        [[nodiscard]] const std::string& GetOnTrue() const { return m_OnTrue; }
-        void SetOnTrue(const std::string& onTrue) { m_OnTrue = onTrue; }
-        
-        [[nodiscard]] const std::string& GetOnFalse() const { return m_OnFalse; }
-        void SetOnFalse(const std::string& onFalse) { m_OnFalse = onFalse; }
+        [[nodiscard]] const std::string& GetAction() const { return m_Action; }
+        void SetAction(const std::string& onTrue) { m_Action = onTrue; }
         
         FsmState* GetCurrentState();
         std::string GetCurrentStateId() const { return m_CurrentStateId; }
@@ -50,10 +49,10 @@ namespace LuaFsm
         FsmState* GetNextState();
         [[nodiscard]] const std::string& GetNextStateId() const { return m_NextStateId; }
         void SetNextState(const std::string& stateId);
+        void UpdateFileContents(std::string& code);
 
         TextEditor* GetConditionEditor() { return &m_ConditionEditor; }
-        TextEditor* GetOnTrueEditor() { return &m_OnTrueEditor; }
-        TextEditor* GetOnFalseEditor() { return &m_OnFalseEditor; }
+        TextEditor* GetActionEditor() { return &m_ActionEditor; }
         
         VisualNode* GetNode() { return &m_Node; }
         [[nodiscard]] std::string MakeIdString(const std::string& name) const;
@@ -65,7 +64,7 @@ namespace LuaFsm
 
         nlohmann::json Serialize() const;
         
-        std::string GetLuaCode(int indent = 0);
+        std::string GetLuaCode();
 
     private:
         VisualNode m_Node{};
@@ -73,10 +72,8 @@ namespace LuaFsm
         int m_Priority = 0;
         std::string m_Condition = "return false";
         TextEditor m_ConditionEditor{};
-        std::string m_OnTrue;
-        TextEditor m_OnTrueEditor{};
-        std::string m_OnFalse;
-        TextEditor m_OnFalseEditor{};
+        std::string m_Action;
+        TextEditor m_ActionEditor{};
         TextEditor m_LuaCodeEditor{};
         std::unordered_map<std::string, StateData> m_Data{};
         std::string m_NextStateId;

@@ -23,12 +23,6 @@ namespace LuaFsm
     Fsm::Fsm(const std::string& id)
     {
         Fsm::SetId(id);
-        m_OnActivateEditor.SetText(m_OnActivate);
-        m_OnActivateEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
-        m_OnProcessEditor.SetText(m_OnProcess);
-        m_OnProcessEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
-        m_OnTerminateEditor.SetText(m_OnTerminate);
-        m_OnTerminateEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
         m_LuaCodeEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
     }
 
@@ -58,6 +52,8 @@ namespace LuaFsm
     {
         const auto key = value->GetId();
         m_Triggers[key] = value;
+        if (const auto state = value->GetCurrentState(); state != nullptr)
+            state->AddTrigger(value);
     }
 
     FsmTriggerPtr Fsm::GetTrigger(const std::string& key)
@@ -103,10 +99,19 @@ namespace LuaFsm
     void Fsm::DrawProperties()
     {
         std::string id = GetId();
-        if (ImGui::Button("Preview Code") || m_LuaCodeEditor.GetText().empty())
+        if (ImGui::Button("Generate code"))
+        {
             m_LuaCodeEditor.SetText(GetLuaCode());
-        if (const auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty() && ImGui::Button("Refresh From File"))
-            UpdateFromFile(linkedFile);
+        }
+        if (const auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty())
+        {
+            ImGui::SameLine();
+            if (ImGui::Button("Load from file"))
+                UpdateFromFile(linkedFile);
+            ImGui::SameLine();
+            if (ImGui::Button("Save to file"))
+                UpdateToFile();
+        }
         if (ImGui::BeginTabBar("FSM Properties"))
         {
             if (ImGui::BeginTabItem("FSM Properties"))
@@ -134,26 +139,10 @@ namespace LuaFsm
                     }
                 }
                 else
-                    ImGui::Text("Export once to link a file!");
+                    ImGui::Text("Create a lua file to link it!");
                 ImGui::Separator();
                 m_LuaCodeEditor.SetPalette(Window::GetPalette());
                 m_LuaCodeEditor.Render("Lua Code");
-                ImGui::EndTabItem();
-            }
-            
-            if (ImGui::BeginTabItem("OnActivate"))
-            {
-                Window::DrawTextEditor(m_OnActivateEditor, m_OnActivate);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("OnProcess"))
-            {
-                Window::DrawTextEditor(m_OnProcessEditor, m_OnProcess);
-                ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem("OnTerminate"))
-            {
-                Window::DrawTextEditor(m_OnTerminateEditor, m_OnTerminate);
                 ImGui::EndTabItem();
             }
             
@@ -184,9 +173,6 @@ namespace LuaFsm
             triggers[key] = value->Serialize();
         }
         j["triggers"] = triggers;
-        j["OnActivate"] = m_OnActivate;
-        j["OnProcess"] = m_OnProcess;
-        j["OnTerminate"] = m_OnTerminate;
         return j;
     }
 
@@ -206,22 +192,89 @@ namespace LuaFsm
             else
                 fsm->AddTrigger(trigger);
         }
-        fsm->SetOnActivate(json["OnActivate"].get<std::string>());
-        fsm->SetOnProcess(json["OnProcess"].get<std::string>());
-        fsm->SetOnTerminate(json["OnTerminate"].get<std::string>());
         fsm->UpdateEditors();
         return fsm;
     }
 
+    void Fsm::UpdateToFile()
+    {
+        if (!NodeEditor::Get()->GetCurrentFsm())
+            return;
+        const auto filePath = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile();
+        if (filePath.empty())
+            return;
+        auto code = FileReader::ReadAllText(filePath);
+        if (code.empty())
+            return;
+        UpdateFileContents(code);
+        std::ofstream file(filePath);
+        if (!file.is_open())
+        {
+            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+            return;
+        }
+        file << code;
+        file.close();
+        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Updated file at: %s", filePath.c_str()});
+        UpdateEditors();
+    }
+    
+    void Fsm::UpdateFileContents(std::string& code)
+    {
+        std::regex regex = FsmRegex::ClassStringRegex(m_Id, "name");
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("{0}.name = \"{1}\"", m_Id, m_Name));
+        else if (!m_Name.empty())
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm name entry not found in file!"});
+        regex = FsmRegex::ClassStringRegex(m_Id, "initialStateId");
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("{0}.initialStateId = \"{1}\"", m_Id, m_InitialStateId));
+        else if (!m_InitialStateId.empty())
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Initial state ID entry not found in file!"});
+        for (const auto& value : m_States | std::views::values)
+            value->UpdateFileContents(code);
+        for (const auto& value : m_Triggers | std::views::values)
+            value->UpdateFileContents(code);
+    }
+
     void Fsm::UpdateEditors()
     {
-        m_OnActivateEditor.SetText(m_OnActivate);
-        m_OnProcessEditor.SetText(m_OnProcess);
-        m_OnTerminateEditor.SetText(m_OnTerminate);
         m_LuaCodeEditor.SetText(GetLuaCode());
     }
 
+    std::string Fsm::GetActivateFunctionCode()
+    {
+        std::string code;
+        code += fmt::format("\n---Activate this FSM\n");
+        code += fmt::format("function {0}:activate()\n", m_Id);
+        for (const auto& [key, state] : m_States)
+        {
+            for (const auto& [id, trigger] : state->GetTriggers())
+                code += fmt::format("\t{0}:registerCondition({1})\n", state->GetId(), id);
+            code += fmt::format("\tself:registerState({0})\n", key);
+            
+        }
+        if (m_InitialStateId.empty())
+            code += fmt::format("\tself:setInitialState(self.initialStateId)\n");
+        else
+            code += fmt::format("\tself:setInitialState({0})\n", m_InitialStateId);
+        code += fmt::format("end\n");
+        return code;
+    }
+    
     std::string Fsm::GetLuaCode()
+    {
+        std::string code;
+        code += fmt::format("---@FSM {0}\n", m_Id);
+        code += fmt::format("---@class {0} : FSM\n", m_Id);
+        code += fmt::format("{0} = FSM:new({{}})\n", m_Id);
+        code += fmt::format("{0}.name = \"{1}\"\n", m_Id, m_Name);
+        code += fmt::format("{0}.initialStateId = \"{1}\"\n\n", m_Id, m_InitialStateId);
+        code += GetActivateFunctionCode();
+        return code;
+    }
+
+    /*std::string Fsm::GetLuaCode()
     {
         std::string code;
         code += fmt::format("---@diagnostic disable: inject-field\n");
@@ -242,86 +295,75 @@ namespace LuaFsm
         code += fmt::format("\tstates = {{\n");
         code += fmt::format("\t}},\n");
         code += fmt::format("}})\n");
-        code += fmt::format("\n");
-        code += fmt::format("\nfunction {0}:onActivate()", m_Id);
-        if (m_OnActivate.empty())
-            code +=  fmt::format(" ");
-        else
-        {
-            code += fmt::format("\n");
-            for (const auto& line : m_OnActivateEditor.GetTextLines())
-                code += fmt::format("\t{0}\n", line);
-        }
-        code += fmt::format("end---@endFunc\n");
-        code += fmt::format("\nfunction {0}:onProcess()", m_Id);
-        if (m_OnProcess.empty())
-            code +=  fmt::format(" ");
-        else
-        {
-            code += fmt::format("\n");
-            for (const auto& line : m_OnProcessEditor.GetTextLines())
-                code += fmt::format("\t{0}\n", line);
-        }
-        code += fmt::format("end---@endFunc\n");
-        code += fmt::format("\nfunction {0}:onTerminate()", m_Id);
-        if (m_OnTerminate.empty())
-            code +=  fmt::format(" ");
-        else
-        {
-            code += fmt::format("\n");
-            for (const auto& line : m_OnTerminateEditor.GetTextLines())
-                code += fmt::format("\t{0}\n", line);
-        }
-        code += fmt::format("end---@endFunc\n\n");
         for (const auto& value : m_States | std::views::values)
         {
-            code += value->GetLuaCode(0) + "\n";
+            code += value->GetLuaCode() + "\n";
         }
-        code += fmt::format("\t---Activate this FSM\n");
+        code += fmt::format("---Activate this FSM\n");
         code += fmt::format("function {0}:activate()\n", m_Id);
         for (const auto& [key, state] : m_States)
         {
             for (const auto& [id, trigger] : state->GetTriggers())
-                code += fmt::format("\t{0}:registerTrigger({1})\n", state->GetId(), id);
+                code += fmt::format("\t{0}:registerCondition({1})\n", state->GetId(), id);
             code += fmt::format("\tself:registerState({0})\n", key);
             
         }
         code += fmt::format("\tself:setInitialState({0})\n", m_InitialStateId);
-        code += fmt::format("\tself:onActivate()\n");
         code += fmt::format("end\n");
         
         return code;
-    }
+    }*/
     
     std::string CAPTURING_REGEX_FSM = R"(\s*([\s\S]*?)\s*end---@endFunc)";
+
+    std::shared_ptr<Fsm> Fsm::CreateFromFile(const std::string& filePath)
+    {
+        const std::string code = FileReader::ReadAllText(filePath);
+        if (code.empty())
+            return nullptr;
+        std::string id;
+        std::regex regex = FsmRegex::IdRegex("FSM");
+        if (std::smatch match; std::regex_search(code, match, regex))
+        {
+            id = match[1].str();
+        }
+        else
+        {
+            return nullptr;
+        }
+        auto fsm = std::make_shared<Fsm>(id);
+        NodeEditor::Get()->SetCurrentFsm(fsm);
+        for (const auto states = FsmState::CreateFromFile(filePath); const auto& state : states)
+            fsm->AddState(state);
+        for (const auto conditions = FsmTrigger::CreateFromFile(filePath); const auto& condition : conditions)
+            fsm->AddTrigger(condition);
+        fsm->UpdateFromFile(filePath);
+        for (const auto& condition : fsm->GetTriggers() | std::views::values)
+            if (const auto state = condition->GetCurrentState(); state != nullptr)
+                state->AddTrigger(condition);
+        fsm->SetLinkedFile(filePath);
+        return fsm;
+    }
 
     void Fsm::UpdateFromFile(const std::string& filePath)
     {
         const std::string code = FileReader::ReadAllText(filePath);
         if (code.empty())
             return;
-        const std::string onActivateFuncName = fmt::format("{0}:onActivate\\(\\)", m_Id);
-        const std::regex onActivateRegex(onActivateFuncName + CAPTURING_REGEX_FSM);
-        if (std::smatch match; std::regex_search(code, match, onActivateRegex))
-        {
-            m_OnActivate = FileReader::RemoveStartingTab(match[1].str());
-        }
-        const std::string onProcessFuncName = fmt::format("{0}:onProcess\\(\\)", m_Id);
-        const std::regex onProcessRegex(onProcessFuncName + CAPTURING_REGEX_FSM);
-        if (std::smatch match; std::regex_search(code, match, onProcessRegex))
-        {
-            m_OnProcess = FileReader::RemoveStartingTab(match[1].str());
-        }
-        const std::string onTerminateFuncName = fmt::format("{0}:onTerminate\\(\\)", m_Id);
-        const std::regex onTerminateRegex(onTerminateFuncName + CAPTURING_REGEX_FSM);
-        if (std::smatch match; std::regex_search(code, match, onTerminateRegex))
-        {
-            m_OnTerminate = FileReader::RemoveStartingTab(match[1].str());
-        }
+        std::string name;
+        if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassStringRegex(m_Id, "name")))
+            name = match[1].str();
+        else
+            name = m_Id;
+        SetName(name);
+        std::string initialStateId;
         for (const auto& state : m_States | std::views::values)
             state->UpdateFromFile(filePath);
         for (const auto& trigger : m_Triggers | std::views::values)
             trigger->UpdateFromFile(filePath);
+        if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassStringRegex(m_Id, "initialStateId")))
+            initialStateId = match[1].str();
+        SetInitialState(initialStateId);
         m_LuaCodeEditor.SetText(GetLuaCode());
         ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Updated from file: %s", filePath.c_str()});
     }

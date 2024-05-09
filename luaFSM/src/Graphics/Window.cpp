@@ -15,8 +15,8 @@
 #include "imgui/ImGuiNotify.hpp"
 #include "imgui/IconsFontAwesome6.h"
 
+//callback for window close glfw
 bool SHUTDOWN = false;
-bool SHOW_METRICS = false;
 void onWindowClose(GLFWwindow* window)
 {
     SHUTDOWN = true;
@@ -29,11 +29,30 @@ namespace LuaFsm
         ImFont* FONT = nullptr;
     }
 
+    //static data initializers
     TextEditor::Palette Window::m_Palette = {};
     std::unordered_map<std::string, ImFont*> Window::m_Fonts = {};
     std::unordered_map<std::string, Window::ImGuiColorTheme> Window::m_Themes = {};
     std::string Window::m_ActiveTheme;
 
+    bool MAIN_DOCK_OPENED = true;
+    bool ADD_STATE_POPUP = false;
+    bool ADD_FSM_POPUP = false;
+    bool LOAD_FILE = false;
+    bool SAVE_FSM = false;
+    bool SELECT_FILE = false;
+    bool OPEN_THEME_EDITOR = false;
+    
+    bool DOCK_SPACE_SET = false;
+    
+    ImVec2 CURSOR_POS = {0, 0};
+    bool ADD_NEW_STATE_AT_CURSOR = false;
+    bool ADD_NEW_TRIGGER_AT_CURSOR = false;
+    
+    std::string LAST_SAVE_PATH;
+    std::string LAST_OPEN_PATH;
+    std::string LAST_PATH;
+    
     Window::Window(const std::string& title, const unsigned int width, const unsigned int height)
     {
         const WindowProps props(title, width, height);
@@ -42,8 +61,7 @@ namespace LuaFsm
     }
 
     Window::~Window() = default;
-
-
+    
     void Window::Init(const WindowProps& props)
     {
         m_Data.title = props.title;
@@ -71,8 +89,7 @@ namespace LuaFsm
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
         glfwDestroyWindow(m_Window);
-        const auto app = Application::Get();
-        app->Close();
+        Application::Get()->Close();
     }
     
     void Window::InitImGui()
@@ -146,8 +163,7 @@ namespace LuaFsm
         m_TextEditor->SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
         m_Palette = palette;
         m_TextEditor->SetPalette(m_Palette);
-        //m_TextEditor->SetText(NodeEditor::Get()->GetCurrentFsm()->GetLuaCode());
-        SetTheme("Red");
+        SetTheme("Green");
     }
     
     void Window::BeginImGui()
@@ -157,25 +173,6 @@ namespace LuaFsm
         ImGui::NewFrame();
         ImGui::PushFont(FONT);
     }
-
-    bool OPENED = true;
-    bool OPENED2 = true;
-    bool ADD_STATE_POPUP = false;
-    bool ADD_FSM_POPUP = false;
-    bool OPEN_FILE_DIALOG = false;
-    bool SAVE_FSM = false;
-    bool SAVE_FSM_LUA = false;
-    bool SHOW_STYLE_EDITOR = false;
-    bool THEME_EDITOR = false;
-
-    bool ADD_NEW_STATE_AT_CURSOR = false;
-    bool ADD_NEW_TRIGGER_AT_CURSOR = false;
-    bool DOCK_SPACE_SET = false;
-    ImVec2 CURSOR_POS = {0, 0};
-    std::string LAST_SAVE_PATH;
-    std::string LAST_EXPORT_PATH;
-    std::string LAST_OPEN_PATH;
-    std::string LAST_PATH;
     
     void Window::TrimTrailingNewlines(std::string& str)
     {
@@ -205,17 +202,17 @@ namespace LuaFsm
                 {
                     ADD_FSM_POPUP = true;
                 }
-                if (ImGui::MenuItem("Load (JSON)"))
+                if (auto fsm = nodeEditor->GetCurrentFsm(); fsm && fsm->GetLinkedFile().empty() && ImGui::MenuItem("Create Lua File"))
                 {
-                    OPEN_FILE_DIALOG = true;
+                    SELECT_FILE = true;
                 }
-                if (ImGui::MenuItem("Save (JSON)"))
+                if (ImGui::MenuItem("Load"))
+                {
+                    LOAD_FILE = true;
+                }
+                if (auto fsm = nodeEditor->GetCurrentFsm(); fsm && !fsm->GetLinkedFile().empty() && ImGui::MenuItem("Save"))
                 {
                     SAVE_FSM = true;
-                }
-                if (ImGui::MenuItem("Export (Lua)"))
-                {
-                    SAVE_FSM_LUA = true;
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Exit"))
@@ -235,10 +232,23 @@ namespace LuaFsm
                 }
                 ImGui::EndMenu();
             }
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.2f, 0.0f));
             if (ImGui::Button("Edit Theme"))
-                THEME_EDITOR = !THEME_EDITOR;
-            
-            
+                OPEN_THEME_EDITOR = !OPEN_THEME_EDITOR;
+            ImGui::PopStyleColor();
+            if (auto fsm = NodeEditor::Get()->GetCurrentFsm())
+            {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.2f, 0.0f));
+                if (ImGui::Button("FSM Properties"))
+                    NodeEditor::Get()->DeselectAllNodes();
+                ImGui::PopStyleColor();
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.2f, 1.0f));
+                if (ImGui::Button("Add State"))
+                    ADD_STATE_POPUP = true;
+                ImGui::PopStyleColor();
+                ImGui::Text("Current FSM: ");
+                ImGui::Text(fsm->GetName().c_str());
+            }
             ImGui::EndMainMenuBar();
         }
 
@@ -248,10 +258,10 @@ namespace LuaFsm
             ADD_FSM_POPUP = false;
         }
 
-        if (THEME_EDITOR)
+        if (OPEN_THEME_EDITOR)
         {
             ImGui::OpenPopup("Theme Editor");
-            THEME_EDITOR = false;
+            OPEN_THEME_EDITOR = false;
         }
 
         if (SAVE_FSM)
@@ -260,23 +270,36 @@ namespace LuaFsm
             SAVE_FSM = false;
         }
 
-        if (SAVE_FSM_LUA)
-        {
-            ImGui::OpenPopup("Export Lua");
-            SAVE_FSM_LUA = false;
-        }
-
-        if (OPEN_FILE_DIALOG)
+        if (LOAD_FILE)
         {
             ImGui::OpenPopup("Open File");
-            OPEN_FILE_DIALOG = false;
+            LOAD_FILE = false;
+        }
+
+        if (SELECT_FILE)
+        {
+            ImGui::OpenPopup("SelectFile");
+            SELECT_FILE = false;
         }
 
         if (ImGui::BeginPopup("Theme Editor"))
         {
             if (!m_ActiveTheme.empty())
             {
+                static std::string name = m_ActiveTheme;
+                static std::string lastActiveTheme = m_ActiveTheme;
                 static auto [standard, hovered, active, text, background, windowBg, themeName] = GetTheme(m_ActiveTheme);
+                if (m_ActiveTheme != lastActiveTheme)
+                {
+                    lastActiveTheme = m_ActiveTheme;
+                    standard = GetTheme(m_ActiveTheme).standard;
+                    hovered = GetTheme(m_ActiveTheme).hovered;
+                    active = GetTheme(m_ActiveTheme).active;
+                    text = GetTheme(m_ActiveTheme).text;
+                    background = GetTheme(m_ActiveTheme).background;
+                    windowBg = GetTheme(m_ActiveTheme).windowBg;
+                    name = m_ActiveTheme;
+                }
                 ImGui::ColorEdit4("standard", reinterpret_cast<float*>(&standard));
                 ImGui::ColorEdit4("hovered", reinterpret_cast<float*>(&hovered));
                 ImGui::ColorEdit4("active", reinterpret_cast<float*>(&active));
@@ -284,19 +307,24 @@ namespace LuaFsm
                 ImGui::ColorEdit4("background", reinterpret_cast<float*>(&background));
                 ImGui::ColorEdit4("windowBg", reinterpret_cast<float*>(&windowBg));
                 SetTheme({standard, hovered, active, text, background, windowBg, ""});
-                static std::string name;
                 ImGui::InputText("Theme Name", &name);
-                if (!name.empty() && ImGui::Button("Save"))
+                if (!name.empty())
                 {
-                    auto theme = ImGuiColorTheme{standard, hovered, active, text, background, windowBg, name};
-                    AddTheme(name, theme);
-                    SetTheme(name);
-                    auto json = theme.Serialize();
-                    std::ofstream file("assets/themes/" + name + ".json");
-                    file << json.dump(4);
-                    file.close();
-                    name = "";
+                    if (ImGui::Button("Save"))
+                    {
+                        auto theme = ImGuiColorTheme{standard, hovered, active, text, background, windowBg, name};
+                        AddTheme(name, theme);
+                        SetTheme(name);
+                        auto json = theme.Serialize();
+                        std::ofstream file("assets/themes/" + name + ".json");
+                        file << json.dump(4);
+                        file.close();
+                        name = "";
+                    }
+                    ImGui::SameLine();
                 }
+                else
+                    ImGui::Text("Input a name to save the theme.");
                 if (ImGui::Button("Close"))
                 {
                     SetTheme(m_ActiveTheme);
@@ -305,101 +333,14 @@ namespace LuaFsm
                 ImGui::EndPopup();
             }
         }
-        
-
         if (ImGui::BeginPopup("Save FSM"))
         {
-            if (!nodeEditor->GetCurrentFsm())
+            if (!nodeEditor->GetCurrentFsm() || nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
             {
+                ImGui::CloseCurrentPopup();
                 ImGui::EndPopup();
-                return;
             }
-            static std::string filePath;
-            static std::string folder;
-            if (filePath.empty())
-            {
-                IGFD::FileDialogConfig config;
-                if (!LAST_SAVE_PATH.empty())
-                    config.filePathName = LAST_SAVE_PATH;
-                else if (!LAST_OPEN_PATH.empty())
-                    config.filePathName = LAST_OPEN_PATH;
-                else
-                {
-                    if(!LAST_PATH.empty())
-                        config.path = LAST_PATH;
-                    else
-                        config.path = ".";
-                    config.fileName = nodeEditor->GetCurrentFsm()->GetId() + ".json";
-                }
-                ImGuiFileDialog::Instance()->OpenDialog("SaveFile", "Save File", ".json", config);
-                if (ImGuiFileDialog::Instance()->Display("SaveFile")) {
-                    if (ImGuiFileDialog::Instance()->IsOk()) { // action if OK
-                        folder = ImGuiFileDialog::Instance()->GetCurrentPath();
-                        filePath = folder + "/";
-                        filePath += ImGuiFileDialog::Instance()->GetCurrentFileName();
-                        if (filePath.find(".json") == std::string::npos)
-                            filePath += ".json";
-                    }
-                    // close
-                    ImGuiFileDialog::Instance()->Close();
-                    ImGui::CloseCurrentPopup();
-                }
-                if (!filePath.empty())
-                {
-                    nodeEditor->SaveFsm(filePath);
-                    LAST_SAVE_PATH = filePath;
-                    LAST_PATH = folder;
-                    folder = "";
-                    filePath = "";
-                }
-            }
-            ImGui::EndPopup();
-        }
-
-        if (ImGui::BeginPopup("Export Lua"))
-        {
-            if (!nodeEditor->GetCurrentFsm())
-            {
-                ImGui::EndPopup();
-                return;
-            }
-            static std::string filePath;
-            static std::string folder;
-            if (filePath.empty())
-            {
-                IGFD::FileDialogConfig config;
-                if (!LAST_EXPORT_PATH.empty())
-                    config.filePathName = LAST_EXPORT_PATH;
-                else
-                {
-                    if(!LAST_PATH.empty())
-                        config.path = LAST_PATH;
-                    else
-                        config.path = ".";
-                    config.fileName = nodeEditor->GetCurrentFsm()->GetId() + ".lua";
-                }
-                ImGuiFileDialog::Instance()->OpenDialog("exportLua", "Export LUA", ".lua", config);
-                if (ImGuiFileDialog::Instance()->Display("exportLua")) {
-                    if (ImGuiFileDialog::Instance()->IsOk()) { // action if OK
-                        folder = ImGuiFileDialog::Instance()->GetCurrentPath();
-                        filePath = folder + "/";
-                        filePath += ImGuiFileDialog::Instance()->GetCurrentFileName();
-                        if (filePath.find(".lua") == std::string::npos)
-                            filePath += ".lua";
-                    }
-                    // close
-                    ImGuiFileDialog::Instance()->Close();
-                    ImGui::CloseCurrentPopup();
-                }
-                if (!filePath.empty())
-                {
-                    nodeEditor->ExportLua(filePath);
-                    LAST_EXPORT_PATH = filePath;
-                    LAST_PATH = folder;
-                    folder = "";
-                    filePath = "";
-                }
-            }
+            nodeEditor->GetCurrentFsm()->UpdateToFile();
             ImGui::EndPopup();
         }
 
@@ -420,10 +361,8 @@ namespace LuaFsm
                     fsm->SetName(fsmName);
                     NodeEditor::Get()->SetCurrentFsm(fsm);
                     NodeEditor::Get()->DeselectAllNodes();
-                    LAST_OPEN_PATH = "";
-                    LAST_SAVE_PATH = "";
-                    LAST_EXPORT_PATH = "";
                     ImGui::CloseCurrentPopup();
+                    SELECT_FILE = true;
                 }
                 ImGui::SameLine();
             }
@@ -457,8 +396,9 @@ namespace LuaFsm
                     config.path = LAST_PATH;
                 else
                     config.path = ".";
-                ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".json", config);
-                if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey")) {
+                config.flags |= ImGuiWindowFlags_NoCollapse;
+                ImGuiFileDialog::Instance()->OpenDialog("loadLuaFile", "Choose File", ".lua", config);
+                if (ImGuiFileDialog::Instance()->Display("loadLuaFile", ImGuiWindowFlags_NoCollapse, ImVec2({600, 500}) )) {
                     if (ImGuiFileDialog::Instance()->IsOk()) { // action if 
                         folder = ImGuiFileDialog::Instance()->GetCurrentPath();
                         filePath = folder + "/";
@@ -471,12 +411,58 @@ namespace LuaFsm
                 if (!filePath.empty())
                 {
                     //deserialize file
-                    auto string = FileReader::ReadAllText(filePath);
-                    const auto json = nlohmann::json::parse(string);
-                    const auto fsm = Fsm::Deserialize(json);
-                    NodeEditor::Get()->SetCurrentFsm(fsm);
+                    const auto fsm = Fsm::CreateFromFile(filePath);
                     NodeEditor::Get()->DeselectAllNodes();
                     LAST_OPEN_PATH = filePath;
+                    LAST_PATH = folder;
+                    folder = "";
+                    filePath = "";
+                }
+            }
+            ImGui::EndPopup();
+        }
+
+        if (ImGui::BeginPopup("SelectFile"))
+        {
+            static std::string filePath;
+            static std::string folder;
+            if (!nodeEditor->GetCurrentFsm())
+            {
+                ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+            }
+            if (filePath.empty())
+            {
+                IGFD::FileDialogConfig config;
+                if (!LAST_PATH.empty())
+                    config.path = LAST_PATH;
+                else
+                    config.path = ".";
+                config.fileName = nodeEditor->GetCurrentFsm()->GetId();
+                ImGuiFileDialog::Instance()->OpenDialog("ChooseLuaFile", "Save lua file", ".lua", config);
+                if (ImGuiFileDialog::Instance()->Display("ChooseLuaFile", ImGuiWindowFlags_NoCollapse, ImVec2({600, 500}) )) {
+                    if (ImGuiFileDialog::Instance()->IsOk()) { // action if 
+                        folder = ImGuiFileDialog::Instance()->GetCurrentPath();
+                        filePath = folder + "/";
+                        filePath += ImGuiFileDialog::Instance()->GetCurrentFileName();
+                    }
+                    // close
+                    ImGuiFileDialog::Instance()->Close();
+                    ImGui::CloseCurrentPopup();
+                }
+                if (!filePath.empty())
+                {
+                    const auto code = nodeEditor->GetCurrentFsm()->GetLuaCode();
+                    std::ofstream file(filePath);
+                    if (!file.is_open())
+                    {
+                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+                        return;
+                    }
+                    file << code;
+                    file.close();
+                    nodeEditor->GetCurrentFsm()->SetLinkedFile(filePath);
+                    LAST_SAVE_PATH = filePath;
                     LAST_PATH = folder;
                     folder = "";
                     filePath = "";
@@ -490,41 +476,12 @@ namespace LuaFsm
         ImGui::SetNextWindowSize(ImVec2(mainViewport->WorkSize.x, mainViewport->WorkSize.y - 30), ImGuiCond_Once);
 
         // Main window encompassing all elements
-        ImGui::Begin("Node Editor", &OPENED,
-            ImGuiWindowFlags_MenuBar
-            | ImGuiWindowFlags_NoCollapse
+        ImGui::Begin("Node Editor", &MAIN_DOCK_OPENED,
+            ImGuiWindowFlags_NoCollapse
             | ImGuiWindowFlags_NoTitleBar
             | ImGuiWindowFlags_NoMove
             | ImGuiWindowFlags_NoBringToFrontOnFocus
             | ImGuiWindowFlags_NoResize);
-
-        // Second-level menu bar
-        if (ImGui::BeginMenuBar())
-        {
-            if (auto fsm = NodeEditor::Get()->GetCurrentFsm())
-            {
-                ImGui::Text(fsm->GetName().c_str());
-                if (ImGui::Button("FSM Properties"))
-                    NodeEditor::Get()->DeselectAllNodes();
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.2f, 1.0f));
-                if (ImGui::Button("Add State"))
-                    ADD_STATE_POPUP = true;
-                ImGui::PopStyleColor();
-            }
-            //if (ImGui::Button("Style Editor"))
-            //    SHOW_STYLE_EDITOR = !SHOW_STYLE_EDITOR;
-            ImGui::EndMenuBar();
-        }
-
-        if (SHOW_METRICS)
-        {
-            ImGui::ShowMetricsWindow(&SHOW_METRICS);
-        }
-
-        if (SHOW_STYLE_EDITOR)
-        {
-            ImGui::ShowStyleEditor();
-        }
 
         if (ADD_STATE_POPUP)
         {
@@ -537,7 +494,7 @@ namespace LuaFsm
             ImGui::Text("Add State");
             static std::string stateId;
             ImGui::InputText("State ID", &stateId, 0);
-            ImGui::SetItemTooltip("Used for internal identification and must be unique. Be careful with choosing if you change it later you will need to refactor your lua code to maintain loading ability.");
+            ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
             static std::string stateName;
             ImGui::InputText("State Name", &stateName, 0);
             if (!nodeEditor->GetCurrentFsm()->GetState(stateId) && !stateId.empty() && !stateName.empty())
@@ -547,6 +504,8 @@ namespace LuaFsm
                     const auto state = std::make_shared<FsmState>(stateId);
                     state->SetName(stateName);
                     nodeEditor->GetCurrentFsm()->AddState(state);
+                    ImGui::SetClipboardText(state->GetLuaCode().c_str());
+                    ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", stateId.c_str()});
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::SameLine();
@@ -613,10 +572,8 @@ namespace LuaFsm
                 ImGui::IsKeyPressed(ImGuiKey_S)
                 && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
             {
-                if (LAST_SAVE_PATH.empty())
-                    SAVE_FSM = true;
-                else
-                    nodeEditor->SaveFsm(LAST_SAVE_PATH);
+                if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
+                    nodeEditor->GetCurrentFsm()->UpdateToFile();
             }
             if (ImGui::IsKeyPressed(ImGuiKey_F4))
             {
@@ -625,23 +582,8 @@ namespace LuaFsm
             }
             if (ImGui::IsKeyPressed(ImGuiKey_F5))
             {
-                if (LAST_SAVE_PATH.empty())
-                    SAVE_FSM = true;
-                else
-                    nodeEditor->SaveFsm(LAST_SAVE_PATH);
-                if (!LAST_EXPORT_PATH.empty())
-                    nodeEditor->ExportLua(LAST_EXPORT_PATH);
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_F6))
-            {
                 if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
-                    nodeEditor->GetCurrentFsm()->UpdateFromFile(nodeEditor->GetCurrentFsm()->GetLinkedFile());
-                if (LAST_SAVE_PATH.empty())
-                    SAVE_FSM = true;
-                else
-                    nodeEditor->SaveFsm(LAST_SAVE_PATH);
-                if (!LAST_EXPORT_PATH.empty())
-                    nodeEditor->ExportLua(LAST_EXPORT_PATH);
+                    nodeEditor->GetCurrentFsm()->UpdateToFile();
             }
             nodeEditor->SetCanvasPos(ImGui::GetWindowPos());
             nodeEditor->SetCanvasSize(ImGui::GetWindowSize());
@@ -717,7 +659,7 @@ namespace LuaFsm
                 {
                     static std::string id;
                     ImGui::InputText("New State ID", &id);
-                    ImGui::SetItemTooltip("Used for internal identification and must be unique. Be careful with choosing if you change it later you will need to refactor your lua code to maintain loading ability.");
+                    ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
                     static std::string name;
                     ImGui::InputText("New State Name", &name);
                     if (!id.empty() && !name.empty() && !NodeEditor::Get()->GetCurrentFsm()->GetState(id) && ImGui::Button("Add State"))
@@ -727,6 +669,8 @@ namespace LuaFsm
                         state->SetName(name);
                         const auto trigger = NodeEditor::Get()->GetCurrentFsm()->GetTrigger(fromNode->GetId());
                         trigger->SetNextState(state->GetId());
+                        ImGui::SetClipboardText(state->GetLuaCode().c_str());
+                        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", id.c_str()});
                         name = "";
                         id = "";
                         ImGui::CloseCurrentPopup();
@@ -765,7 +709,10 @@ namespace LuaFsm
                     {
                         const auto state = NodeEditor::Get()->GetCurrentFsm()->GetState(fromNode->GetId());
                         const auto trigger = state->AddTrigger(id);
+                        nodeEditor->GetCurrentFsm()->AddTrigger(trigger);
                         trigger->GetNode()->SetTargetPosition(Math::SubtractVec2(CURSOR_POS, {25, 50}));
+                        ImGui::SetClipboardText(trigger->GetLuaCode().c_str());
+                        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Condition added: %s, code copied to clipboard", id.c_str()});
                         trigger->SetName(name);
                         name = "";
                         id = "";
