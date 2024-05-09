@@ -126,11 +126,51 @@ namespace LuaFsm
             if (m_Type == NodeType::Transition)
             {
                 drawList = ImGui::GetWindowDrawList();
-                drawList->AddText(
-                    Math::AddVec2X(
-                        Math::SubtractVec2Y(Math::AddVec2X(GetLastDrawPos(), m_Radius),
-                            ImGui::CalcTextSize(object->GetName().c_str()).y * 0.5f),
-                        3), ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]), object->GetName().c_str());
+                auto rightBound = Math::AddVec2X(GetLastDrawPos(), m_Radius);
+                auto leftBound = Math::SubtractVec2X(GetLastDrawPos(), m_Radius);
+                auto trigger = editor->GetCurrentFsm()->GetTrigger(m_Id);
+                ImVec2 currentStateArrowPos = {};
+                ImVec2 nextStateArrowPos = {};
+
+                if (trigger->GetCurrentState())
+                    currentStateArrowPos = GetFromPoint(trigger->GetCurrentState()->GetNode());
+
+                if (trigger->GetNextState())
+                    nextStateArrowPos = GetFromPoint(trigger->GetNextState()->GetNode());
+
+                auto textSize = ImGui::CalcTextSize(object->GetName().c_str());
+                ImVec2 position = {};
+    
+                // Determine arrow directions and adjust text position
+                bool arrowFromLeft = (currentStateArrowPos.x < GetLastDrawPos().x
+                    && abs(currentStateArrowPos.y - GetLastDrawPos().y) < m_Radius * 0.5)
+                || (nextStateArrowPos.x < GetLastDrawPos().x
+                    && abs(nextStateArrowPos.y - GetLastDrawPos().y) < m_Radius * 0.5);
+                bool arrowFromRight = (currentStateArrowPos.x > GetLastDrawPos().x
+                    && abs(currentStateArrowPos.y - GetLastDrawPos().y) < m_Radius * 0.5)
+                || (nextStateArrowPos.x > GetLastDrawPos().x
+                    && abs(nextStateArrowPos.y - GetLastDrawPos().y) < m_Radius * 0.5);
+
+                if (arrowFromRight)
+                {
+                    // Move text to the left
+                    auto xPos = Math::SubtractVec2X(leftBound, 3.0f + textSize.x);
+                    position = Math::SubtractVec2Y(xPos, textSize.y * 0.5f);
+                }
+                else if (arrowFromLeft)
+                {
+                    // Move text to the right
+                    auto xPos = Math::AddVec2X(rightBound, 3.0f);
+                    position = Math::SubtractVec2Y(xPos, textSize.y * 0.5f);
+                }
+                else
+                {
+                    // Default position
+                    auto xPos = Math::AddVec2X(rightBound, 3.0f);
+                    position = Math::SubtractVec2Y(xPos, textSize.y * 0.5f);
+                }
+
+                drawList->AddText(position, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]), object->GetName().c_str());
             }
         }
         return this;

@@ -45,19 +45,35 @@ namespace LuaFsm
 
         std::string GetLinkedFile() const { return m_LinkedFile; }
         void SetLinkedFile(const std::string& linkedFile) { m_LinkedFile = linkedFile; }
+
+        std::string GetOnActivate() const { return m_OnActivate; }
+        void SetOnActivate(const std::string& onActivate) { m_OnActivate = onActivate; }
+        std::string GetOnTerminate() const { return m_OnTerminate; }
+        void SetOnTerminate(const std::string& onTerminate) { m_OnTerminate = onTerminate; }
+        std::string GetOnProcess() const { return m_OnProcess; }
+        void SetOnProcess(const std::string& onProcess) { m_OnProcess = onProcess; }
         
         std::string GetLuaCode();
+        
         void UpdateFromFile(const std::string& filePath);
 
         void DrawProperties();
         
         nlohmann::json Serialize() const;
         static std::shared_ptr<Fsm> Deserialize(const nlohmann::json& json);
+        void UpdateEditors();
+
     private:
         std::unordered_map<std::string, FsmStatePtr> m_States{};
         std::unordered_map<std::string, FsmTriggerPtr> m_Triggers{};
         std::string m_InitialStateId;
         std::string m_LinkedFile = "";
+        std::string m_OnActivate;
+        TextEditor m_OnActivateEditor{};
+        std::string m_OnTerminate;
+        TextEditor m_OnTerminateEditor{};
+        std::string m_OnProcess = "return true";
+        TextEditor m_OnProcessEditor{};
         TextEditor m_LuaCodeEditor;
     };
 }

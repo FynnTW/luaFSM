@@ -315,7 +315,6 @@ namespace LuaFsm
                 return;
             }
             static std::string filePath;
-            static std::string path;
             static std::string folder;
             if (filePath.empty())
             {
@@ -335,9 +334,9 @@ namespace LuaFsm
                 ImGuiFileDialog::Instance()->OpenDialog("SaveFile", "Save File", ".json", config);
                 if (ImGuiFileDialog::Instance()->Display("SaveFile")) {
                     if (ImGuiFileDialog::Instance()->IsOk()) { // action if OK
-                        filePath = ImGuiFileDialog::Instance()->GetFilePathName();
-                        path = ImGuiFileDialog::Instance()->GetFilePathName();
-                        folder = path.substr(0, path.find_last_of("/\\"));
+                        folder = ImGuiFileDialog::Instance()->GetCurrentPath();
+                        filePath = folder + "/";
+                        filePath += ImGuiFileDialog::Instance()->GetCurrentFileName();
                         if (filePath.find(".json") == std::string::npos)
                             filePath += ".json";
                     }
@@ -348,11 +347,10 @@ namespace LuaFsm
                 if (!filePath.empty())
                 {
                     nodeEditor->SaveFsm(filePath);
-                    LAST_SAVE_PATH = path;
+                    LAST_SAVE_PATH = filePath;
                     LAST_PATH = folder;
                     folder = "";
                     filePath = "";
-                    path = "";
                 }
             }
             ImGui::EndPopup();
@@ -383,8 +381,9 @@ namespace LuaFsm
                 ImGuiFileDialog::Instance()->OpenDialog("exportLua", "Export LUA", ".lua", config);
                 if (ImGuiFileDialog::Instance()->Display("exportLua")) {
                     if (ImGuiFileDialog::Instance()->IsOk()) { // action if OK
-                        filePath = ImGuiFileDialog::Instance()->GetFilePathName();
-                        folder = filePath.substr(0, filePath.find_last_of("/\\"));
+                        folder = ImGuiFileDialog::Instance()->GetCurrentPath();
+                        filePath = folder + "/";
+                        filePath += ImGuiFileDialog::Instance()->GetCurrentFileName();
                         if (filePath.find(".lua") == std::string::npos)
                             filePath += ".lua";
                     }
@@ -460,9 +459,10 @@ namespace LuaFsm
                     config.path = ".";
                 ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".json", config);
                 if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey")) {
-                    if (ImGuiFileDialog::Instance()->IsOk()) { // action if OK
-                        filePath = ImGuiFileDialog::Instance()->GetFilePathName();
-                        folder = filePath.substr(0, filePath.find_last_of("/\\"));
+                    if (ImGuiFileDialog::Instance()->IsOk()) { // action if 
+                        folder = ImGuiFileDialog::Instance()->GetCurrentPath();
+                        filePath = folder + "/";
+                        filePath += ImGuiFileDialog::Instance()->GetCurrentFileName();
                     }
                     // close
                     ImGuiFileDialog::Instance()->Close();
