@@ -143,6 +143,10 @@ namespace LuaFsm
         float GetOutArrowCurve() const { return m_OutArrowCurve; }
         void SetLastConnectionPoint(const ImVec2& lastConnectionPoint) { m_LastConnectionPoint = lastConnectionPoint; }
         ImVec2 GetLastConnectionPoint() const { return m_LastConnectionPoint; }
+        void SetInLineMidPoint(const ImVec2& lineMidPoint) { m_InLineMidPoint = lineMidPoint; }
+        ImVec2 GetInLineMidPoint() const { return m_InLineMidPoint; }
+        void SetOutLineMidPoint(const ImVec2& lineMidPoint) { m_OutLineMidPoint = lineMidPoint; }
+        ImVec2 GetOutLineMidPoint() const { return m_OutLineMidPoint; }
 
     private:
         ImVec2 m_Position{-1.0f, -1.0f};
@@ -162,6 +166,8 @@ namespace LuaFsm
         NodeShape m_Shape = NodeShape::Circle;
         NodeType m_Type = NodeType::State;
         ImVec2 m_GridPos = {1048,1032};
+        ImVec2 m_InLineMidPoint = {};
+        ImVec2 m_OutLineMidPoint = {};
         ImColor m_Color = IM_COL32(0, 80, 80, 150);
         ImColor m_HighLightColor = IM_COL32(25, 125, 125, 175);
         ImColor m_HighLightColorSelected = IM_COL32(50, 150, 150, 200);

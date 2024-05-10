@@ -69,6 +69,7 @@ namespace LuaFsm
         code += fmt::format("{0}.editorPos = {{{1}, {2}}}\n", m_Id, m_Node.GetGridPos().x, m_Node.GetGridPos().y);
         code += fmt::format("{0}.inLineCurve = {1}\n", m_Id, m_Node.GetInArrowCurve());
         code += fmt::format("{0}.outLineCurve = {1}\n", m_Id, m_Node.GetOutArrowCurve());
+        code += fmt::format("{0}.color = {{{1}, {2}, {3}, {4}}}\n", m_Id, m_Node.GetColor().Value.x, m_Node.GetColor().Value.y, m_Node.GetColor().Value.z, m_Node.GetColor().Value.w);
         code += fmt::format("{0}.currentStateId = \"{1}\"\n", m_Id, m_CurrentStateId);
         code += fmt::format("{0}.nextStateId = \"{1}\"\n", m_Id, m_NextStateId);
         code += fmt::format("{0}.priority = {1}\n", m_Id, m_Priority);
@@ -132,6 +133,27 @@ namespace LuaFsm
         }
         else
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s position entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassTableRegex(oldId, "color");
+        if (std::smatch match; std::regex_search(code, match, regex))
+        {
+            std::string tableContent = match[1].str();
+            std::regex idRegex = FsmRegex::ClassTableElementsRegex();
+            std::sregex_iterator iter(tableContent.begin(), tableContent.end(), idRegex);
+            std::vector<float> elements;
+            for (std::sregex_iterator end; iter != end; ++iter) {
+                elements.push_back(std::stof((*iter)[1].str()));
+            }
+            if (elements.size() >= 4)
+            {
+                ImColor color{};
+                color.Value.x = elements[0];
+                color.Value.y = elements[1];
+                color.Value.z = elements[2];
+                color.Value.w = elements[3];
+                color = GetNode()->GetColor();
+                code = std::regex_replace(code, regex, fmt::format("{0}.color = {{{1}, {2}, {3}, {4}}}", m_Id, color.Value.x, color.Value.y, color.Value.z, color.Value.w));
+            }
+        }
         regex = FsmRegex::ClassStringRegex(oldId, "currentStateId");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.currentStateId = \"{1}\"", m_Id, m_CurrentStateId));
@@ -152,11 +174,13 @@ namespace LuaFsm
             code = std::regex_replace(code, regex, fmt::format("{0}.inLineCurve = {1}", m_Id, m_Node.GetInArrowCurve()));
         else if (m_Node.GetInArrowCurve() > 0.0001f || m_Node.GetInArrowCurve() < 0.0001f)
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s inLineCurve entry not found in file!", m_Id.c_str()});
+
         regex = FsmRegex::ClassFloatRegex(oldId, "outLineCurve");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.outLineCurve = {1}", m_Id, m_Node.GetOutArrowCurve()));
         else if (m_Node.GetOutArrowCurve() > 0.0001f || m_Node.GetOutArrowCurve() < 0.0001f)
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s outLineCurve entry not found in file!", m_Id.c_str()});
+
         regex = FsmRegex::FunctionBodyReplace(oldId, "condition");
         if (std::smatch match; std::regex_search(code, match, regex))
         {
@@ -241,6 +265,25 @@ namespace LuaFsm
                 GetNode()->SetGridPos(position);
             }
         }
+        if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassTableRegex(m_Id, "color")))
+        {
+            std::string tableContent = match[1].str();
+            std::regex idRegex = FsmRegex::ClassTableElementsRegex();
+            std::sregex_iterator iter(tableContent.begin(), tableContent.end(), idRegex);
+            std::vector<float> elements;
+            for (std::sregex_iterator end; iter != end; ++iter) {
+                elements.push_back(std::stof((*iter)[1].str()));
+            }
+            if (elements.size() >= 4)
+            {
+                ImColor color{};
+                color.Value.x = elements[0];
+                color.Value.y = elements[1];
+                color.Value.z = elements[2];
+                color.Value.w = elements[3];
+                GetNode()->SetColor(color);
+            }
+        }
         std::string condition = "return false";
         if (std::smatch match; std::regex_search(code, match, FsmRegex::FunctionBody(m_Id, "condition")))
             condition = match[1].str();
@@ -262,6 +305,12 @@ namespace LuaFsm
         auto code = FileReader::ReadAllText(filePath);
         if (code.empty())
             return;
+        auto classRegex = std::regex(fmt::format(R"((class\s+{0}\s*\:\s*FSM_CONDITION))", oldId));
+        if (std::smatch match; std::regex_search(code, match, classRegex))
+            code = std::regex_replace(code, classRegex, fmt::format(R"(class {0} : FSM_CONDITION)", m_Id));
+        classRegex = std::regex(fmt::format(R"(({0}\s*=\s*FSM_CONDITION\:new))", oldId));
+        if (std::smatch match; std::regex_search(code, match, classRegex))
+            code = std::regex_replace(code, classRegex, fmt::format(R"({0} = FSM_CONDITION:new)", m_Id));
         UpdateFileContents(code, oldId);
         std::ofstream file(filePath);
         if (!file.is_open())
@@ -407,10 +456,10 @@ namespace LuaFsm
         {
             if (ImGui::BeginTabItem(MakeIdString("Trigger Properties").c_str()))
             {
-                /*
-                ImGui::Text("Position: %f, %f", m_Node.GetTargetPosition().x, m_Node.GetTargetPosition().y);
-                ImGui::Text("DrawPos: %f, %f", m_Node.GetLastDrawPos().x, m_Node.GetLastDrawPos().y);
-                */
+                
+                ImGui::Text("inMidPoint: %f, %f", m_Node.GetInLineMidPoint().x, m_Node.GetInLineMidPoint().y);
+                ImGui::Text("outMidPoint: %f, %f", m_Node.GetOutLineMidPoint().x, m_Node.GetOutLineMidPoint().y);
+                ImGui::Text("mousePos: %f, %f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
                 ImGui::Text("ID: %s", GetId().c_str());
                 ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Refactor ID").c_str()))
@@ -431,12 +480,19 @@ namespace LuaFsm
                 ImGui::InputInt(MakeIdString("Priority").c_str(), &m_Priority);
                 ImGui::Separator();
                 float inCurve = m_Node.GetInArrowCurve();
-                ImGui::SliderFloat(MakeIdString("Out line curve").c_str(), &inCurve, -1.0f, 1.0f);
+                ImGui::SliderFloat(MakeIdString("In line curve").c_str(), &inCurve, -1.0f, 1.0f);
                 m_Node.SetInArrowCurve(inCurve);
                 ImGui::Separator();
                 float outCurve = m_Node.GetOutArrowCurve();
-                ImGui::SliderFloat(MakeIdString("In line curve").c_str(), &outCurve, -1.0f, 1.0f);
+                ImGui::SliderFloat(MakeIdString("Out line curve").c_str(), &outCurve, -1.0f, 1.0f);
                 m_Node.SetOutArrowCurve(outCurve);
+                ImGui::Separator();
+                auto color = m_Node.GetColor();
+                ImGui::ColorEdit4("Node Color", reinterpret_cast<float*>(&color));
+                m_Node.SetColor(color);
+                m_Node.SetCurrentColor(color);
+                if (m_Node.IsSelected())
+                    m_Node.HighLightSelected();
                 ImGui::Separator();
                 ImGui::Text("Current State: ");
                 ImGui::SameLine();
@@ -587,10 +643,12 @@ namespace LuaFsm
                 ImGui::InputText(MakeIdString("id").c_str(), &key);
                 static std::string name;
                 ImGui::InputText(MakeIdString("name").c_str(), &name);
-                if (!key.empty() && !name.empty() &&
+                if (const auto invalid = std::regex_search(key, FsmRegex::InvalidIdRegex());
+                    !invalid && !key.empty() && !name.empty() &&
                     !NodeEditor::Get()->GetCurrentFsm()->GetState(key)
                     && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key)
-                    && ImGui::Button(MakeIdString("Add State").c_str()))
+                    && ImGui::Button(MakeIdString("Add State").c_str())
+                    )
                 {
                     auto newState = NodeEditor::Get()->GetCurrentFsm()->AddState(key);
                     NodeEditor::Get()->GetCurrentFsm()->GetTrigger(m_Id)->SetCurrentState(newState->GetId());
@@ -603,6 +661,16 @@ namespace LuaFsm
                     name = "";
                     ImGui::CloseCurrentPopup();
                 }
+                else if (invalid)
+                    ImGui::Text("Invalid ID");
+                else if (key.empty())
+                    ImGui::Text("ID can't be empty");
+                else if (name.empty())
+                    ImGui::Text("Name can't be empty");
+                else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key))
+                    ImGui::Text("Trigger with this ID already exists");
+                else if (NodeEditor::Get()->GetCurrentFsm()->GetState(key))
+                    ImGui::Text("State with this ID already exists");
                 ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Cancel").c_str()))
                 {
@@ -623,7 +691,8 @@ namespace LuaFsm
                 ImGui::InputText(MakeIdString("id").c_str(), &key);
                 static std::string name;
                 ImGui::InputText(MakeIdString("name").c_str(), &name);
-                if (!key.empty() && !name.empty() &&
+                if (const auto invalid = std::regex_search(key, FsmRegex::InvalidIdRegex());
+                    !invalid && !key.empty() && !name.empty() &&
                     !NodeEditor::Get()->GetCurrentFsm()->GetState(key)
                     && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key)
                     && ImGui::Button(MakeIdString("Add State").c_str()))
@@ -640,6 +709,16 @@ namespace LuaFsm
                     name = "";
                     ImGui::CloseCurrentPopup();
                 }
+                else if (invalid)
+                    ImGui::Text("Invalid ID");
+                else if (key.empty())
+                    ImGui::Text("ID can't be empty");
+                else if (name.empty())
+                    ImGui::Text("Name can't be empty");
+                else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key))
+                    ImGui::Text("Trigger with this ID already exists");
+                else if (NodeEditor::Get()->GetCurrentFsm()->GetState(key))
+                    ImGui::Text("State with this ID already exists");
                 ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Cancel").c_str()))
                 {
@@ -658,13 +737,25 @@ namespace LuaFsm
             {
                 static std::string newId;
                 ImGui::InputText(MakeIdString("New ID").c_str(), &newId);
-                if (!newId.empty() && ImGui::Button(MakeIdString("Refactor ID").c_str()))
+                if (const auto invalid = std::regex_search(newId, FsmRegex::InvalidIdRegex());
+                    !invalid && !newId.empty()
+                    && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(newId)
+                    && !NodeEditor::Get()->GetCurrentFsm()->GetState(newId)
+                    && ImGui::Button(MakeIdString("Refactor ID").c_str()))
                 {
                     RefactorId(newId);
                     SET_NEW_COND_ID = false;
                     newId = "";
                     ImGui::CloseCurrentPopup();
                 }
+                else if (invalid)
+                    ImGui::Text("Invalid ID");
+                else if (newId.empty())
+                    ImGui::Text("ID can't be empty");
+                else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(newId))
+                    ImGui::Text("Trigger with this ID already exists");
+                else if (NodeEditor::Get()->GetCurrentFsm()->GetState(newId))
+                    ImGui::Text("State with this ID already exists");
                 ImGui::SameLine();
                 if (ImGui::Button("Cancel"))
                 {

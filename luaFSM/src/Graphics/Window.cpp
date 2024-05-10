@@ -360,7 +360,10 @@ namespace LuaFsm
             static std::string fsmName;
             ImGui::InputText("FSM Name", &fsmName, 0);
             ImGui::SetItemTooltip("Just for visual purposes in this editor.");
-            if (!fsmId.empty() && !fsmName.empty())
+            if (auto invalid = std::regex_search(fsmId, FsmRegex::InvalidIdRegex());
+                !fsmId.empty()
+                && !fsmName.empty()
+                && !invalid)
             {
                 if (ImGui::Button("Add"))
                 {
@@ -380,6 +383,10 @@ namespace LuaFsm
             else if (fsmName.empty())
             {
                 ImGui::Text("FSM Name cannot be empty");
+            }
+            else if (invalid)
+            {
+                ImGui::Text("Invalid FSM ID");
             }
             if (ImGui::Button("Cancel"))
             {
@@ -504,7 +511,12 @@ namespace LuaFsm
             ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
             static std::string stateName;
             ImGui::InputText("State Name", &stateName, 0);
-            if (!nodeEditor->GetCurrentFsm()->GetState(stateId) && !nodeEditor->GetCurrentFsm()->GetTrigger(stateId) && !stateId.empty() && !stateName.empty())
+            if (auto invalid = std::regex_search(stateId, FsmRegex::InvalidIdRegex());
+                !nodeEditor->GetCurrentFsm()->GetState(stateId)
+                && !nodeEditor->GetCurrentFsm()->GetTrigger(stateId)
+                && !stateId.empty()
+                && !stateName.empty()
+                && !invalid)
             {
                 if (ImGui::Button("Add"))
                 {
@@ -529,6 +541,10 @@ namespace LuaFsm
             else if (stateName.empty())
             {
                 ImGui::Text("State Name cannot be empty");
+            }
+            else if (invalid)
+            {
+                ImGui::Text("Invalid State ID");
             }
             if (ImGui::Button("Cancel"))
             {
@@ -650,6 +666,92 @@ namespace LuaFsm
                     ImGui::SetScrollY(ImGui::GetScrollY() - delta.y);
                     ImGui::ResetMouseDragDelta(ImGuiMouseButton_Middle);
                 }
+                if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+                {
+                    if (auto existingCurveNode = nodeEditor->GetCurveNode(); !existingCurveNode)
+                    {
+                        const auto fsm = nodeEditor->GetCurrentFsm();
+                        const auto pressPos = ImGui::GetMousePos();
+                        float smallestDist = 40;
+                        VisualNode* curveNode = nullptr;
+                        bool isInLine = false;
+                        for (const auto& [key, condition] : fsm->GetTriggers())
+                        {
+                            if (Math::Distance(pressPos, condition->GetNode()->GetInLineMidPoint()) < smallestDist)
+                            {
+                                smallestDist = Math::Distance(pressPos, condition->GetNode()->GetInLineMidPoint());
+                                curveNode = condition->GetNode();
+                                isInLine = true;
+                            }
+                            if (Math::Distance(pressPos, condition->GetNode()->GetOutLineMidPoint()) < smallestDist)
+                            {
+                                smallestDist = Math::Distance(pressPos, condition->GetNode()->GetOutLineMidPoint());
+                                curveNode = condition->GetNode();
+                                isInLine = false;
+                            }
+                        }
+                        if (curveNode)
+                        {
+                            ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
+                            nodeEditor->SetCurveNode(curveNode);
+                            if (isInLine)
+                            {
+                                nodeEditor->SetSettingInCurve(true);
+                                nodeEditor->SetSettingOutCurve(false);
+                            }
+                            else
+                            {
+                                nodeEditor->SetSettingInCurve(false);
+                                nodeEditor->SetSettingOutCurve(true);
+                            }
+                        }
+                    }
+                    else if (ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+                    {
+                        if (const auto trigger = nodeEditor->GetCurrentFsm()->GetTrigger(existingCurveNode->GetId()))
+                        {
+                            if (nodeEditor->IsSettingOutCurve())
+                            {
+                                auto newCurve = existingCurveNode->GetOutArrowCurve();
+                                if (const auto fromState = trigger->GetNextState())
+                                {
+                                    if (const auto fromPos = fromState->GetNode()->GetGridPos(); fromPos.y < existingCurveNode->GetGridPos().y)
+                                        newCurve += (ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x + ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y) / 350;
+                                    else
+                                        newCurve -= (ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x - ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y) / 350;
+                                    newCurve = std::max(-1.0f, std::min(1.0f, newCurve));
+                                    existingCurveNode->SetOutArrowCurve(newCurve);
+                                }
+                            }
+                            else if (nodeEditor->IsSettingInCurve())
+                            {
+                                auto newCurve = existingCurveNode->GetInArrowCurve();
+                                if (const auto toState = trigger->GetCurrentState())
+                                {
+                                    if (const auto fromPos = toState->GetNode()->GetGridPos(); fromPos.y < existingCurveNode->GetGridPos().y)
+                                        newCurve -= (ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x - ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y) / 350;
+                                    else
+                                        newCurve += (ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x + ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y) / 350;
+                                    newCurve = std::max(-1.0f, std::min(1.0f, newCurve));
+                                    existingCurveNode->SetInArrowCurve(newCurve);
+                                }
+                            }
+                            ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
+                        }
+                    }
+                }
+                else
+                {
+                    nodeEditor->SetCurveNode(nullptr);
+                    nodeEditor->SetSettingInCurve(false);
+                    nodeEditor->SetSettingOutCurve(false);
+                }
+            }
+            else
+            {
+                nodeEditor->SetCurveNode(nullptr);
+                nodeEditor->SetSettingInCurve(false);
+                nodeEditor->SetSettingOutCurve(false);
             }
             if (ImGui::IsKeyPressed(ImGuiKey_F4))
             {
@@ -694,16 +796,16 @@ namespace LuaFsm
                 trigger->DrawNode();
                 if (trigger->GetCurrentState())
                 {
-                    if (const auto node = trigger->GetCurrentState()->GetNode())
+                    if (const auto currentState = trigger->GetCurrentState()->GetNode())
                     {
-                        NodeEditor::DrawConnection(node, trigger->GetNode());
+                        NodeEditor::DrawConnection(currentState, trigger->GetNode());
                     }
                 }
                 if (trigger->GetNextState())
                 {
-                    if (const auto nextNode = trigger->GetNextState()->GetNode())
+                    if (const auto nextState = trigger->GetNextState()->GetNode())
                     {
-                            NodeEditor::DrawConnection(trigger->GetNode(), nextNode);
+                        NodeEditor::DrawConnection(trigger->GetNode(), nextState);
                     }
                 }
             }
@@ -791,7 +893,9 @@ namespace LuaFsm
                     ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
                     static std::string name;
                     ImGui::InputText("New State Name", &name);
-                    if (!id.empty() && !name.empty()
+                    if (const auto invalid = std::regex_search(id, FsmRegex::InvalidIdRegex());
+                        !invalid &&
+                        !id.empty() && !name.empty()
                         && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
                         && !NodeEditor::Get()->GetCurrentFsm()->GetState(id) && ImGui::Button("Add State"))
                     {
@@ -819,6 +923,10 @@ namespace LuaFsm
                     {
                         ImGui::Text("State with ID already exists.");
                     }
+                    else if (invalid)
+                    {
+                        ImGui::Text("Invalid State ID");
+                    }
                     ImGui::SameLine();
                     if (ImGui::Button("Cancel"))
                     {
@@ -838,7 +946,8 @@ namespace LuaFsm
                     static std::string id;
                     ImGui::InputText("New State ID", &id);
                     ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
-                    if (!id.empty()
+                    if (const auto invalid = std::regex_search(id, FsmRegex::InvalidIdRegex());
+                        !invalid &&!id.empty()
                         && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
                         && !NodeEditor::Get()->GetCurrentFsm()->GetState(id)
                         && ImGui::Button("Add State"))
@@ -865,6 +974,10 @@ namespace LuaFsm
                     {
                         ImGui::Text("State with ID already exists.");
                     }
+                    else if (invalid)
+                    {
+                        ImGui::Text("Invalid State ID");
+                    }
                     ImGui::SameLine();
                     if (ImGui::Button("Cancel"))
                     {
@@ -884,7 +997,8 @@ namespace LuaFsm
                     static std::string id;
                     ImGui::InputText("New Trigger ID", &id);
                     ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
-                    if (!id.empty()
+                    if (const auto invalid = std::regex_search(id, FsmRegex::InvalidIdRegex());
+                        !invalid && !id.empty()
                         && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
                         && !NodeEditor::Get()->GetCurrentFsm()->GetState(id)
                         && ImGui::Button("Add Condition"))
@@ -911,6 +1025,10 @@ namespace LuaFsm
                     {
                         ImGui::Text("Condition with ID already exists.");
                     }
+                    else if (invalid)
+                    {
+                        ImGui::Text("Invalid Condition ID");
+                    }
                     ImGui::SameLine();
                     if (ImGui::Button("Cancel"))
                     {
@@ -929,7 +1047,9 @@ namespace LuaFsm
                     ImGui::SetItemTooltip("Used for internal identification and must be unique. Be careful with choosing if you change it later you will need to refactor your lua code to maintain loading ability.");
                     static std::string name;
                     ImGui::InputText("New Trigger Name", &name);
-                    if (!id.empty() && !name.empty()
+                    if (const auto invalid = std::regex_search(id, FsmRegex::InvalidIdRegex());
+                        !invalid &&
+                        !id.empty() && !name.empty()
                         && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
                         && !NodeEditor::Get()->GetCurrentFsm()->GetState(id)
                         && ImGui::Button("Add Trigger"))
@@ -957,6 +1077,10 @@ namespace LuaFsm
                     else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id))
                     {
                         ImGui::Text("Trigger with ID already exists.");
+                    }
+                    else if (invalid)
+                    {
+                        ImGui::Text("Invalid Trigger ID");
                     }
                     ImGui::SameLine();
                     if (ImGui::Button("Cancel"))
