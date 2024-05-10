@@ -1,10 +1,85 @@
 ﻿#pragma once
+#include <spdlog/fmt/bundled/format.h>
+
 #include "imgui.h"
 #include "data/Fsm.h"
 #include "Graphics/VisualNode.h"
 
 namespace LuaFsm
 {
+
+    struct FsmRegex
+    {
+        static std::regex ClassStringRegex(const std::string &id, const std::string &fieldName)
+        {
+            const auto string =  fmt::format(R"({0}\.{1}\s*=\s*\"([\sa-zA-Z0-9_-]*)\")", id, fieldName);
+            std::regex regex(string);
+            return regex;
+        }
+
+        static std::regex ClassIntegerRegex(const std::string &id, const std::string &fieldName)
+        {
+            const auto string =  fmt::format(R"({0}\.{1}\s*=\s*([0-9]+))", id, fieldName);
+            std::regex regex(string);
+            return regex;
+        }
+
+        static std::regex ClassFloatRegex(const std::string &id, const std::string &fieldName)
+        {
+            const auto string =  fmt::format(R"({0}\.{1}\s*=\s*([\.0-9]+))", id, fieldName);
+            std::regex regex(string);
+            return regex;
+        }
+
+        static std::regex ClassTableRegex(const std::string &id, const std::string &fieldName)
+        {
+            const auto prefix =  fmt::format(R"({0}\.{1})", id, fieldName);
+            const auto string = prefix + R"(\s*=\s*\{(?:\s*)((?:.|\s)+?)(?:\s*)\})";
+            std::regex regex(string);
+            return regex;
+        }
+
+        static std::regex ClassTableElementsRegex()
+        {
+            const auto string = R"(([\.0-9]+)(?:,|$))";
+            std::regex regex(string);
+            return regex;
+        }
+
+        static std::regex IdRegex(const std::string &classType)
+        {
+            const auto string = fmt::format("---@{0}\\s+([a-zA-Z0-9_-]+)", classType);
+            std::regex regex(string);
+            return regex;
+        }
+
+        static std::regex IdRegexClass(const std::string &classType, const std::string &className)
+        {
+            const auto string = fmt::format("---@{0}\\s+({1})", classType, className);
+            std::regex regex(string);
+            return regex;
+        }
+        
+        static std::string FunctionNameString(const std::string &id, const std::string &funcName)
+        {
+            return fmt::format("{0}:{1}\\(.*\\)", id, funcName);
+        }
+        
+        static std::regex FunctionBody(const std::string &id, const std::string &funcName)
+        {
+            const auto functionBodyString = R"(\s*([\s\S]*?)\s*end---@endFunc)";
+            std::regex regex(FunctionNameString(id, funcName) + functionBodyString);
+            return regex;
+        }
+        
+        static std::regex FunctionBodyReplace(const std::string &id, const std::string &funcName)
+        {
+            const auto functionBodyString = R"(\s*([\s\S]*?)\s*(end---@endFunc))";
+            std::regex regex("(" + FunctionNameString(id, funcName) + ")" + functionBodyString);
+            return regex;
+        }
+    };
+    
     class VisualNode; //forward declaration
     class Fsm; //forward declaration
     class NodeEditor
@@ -39,9 +114,10 @@ namespace LuaFsm
         VisualNode* GetNode(const std::string& id, NodeType type = NodeType::State) const;
 
         //Draw lines
-        static void DrawLine(ImVec2 fromPos, ImVec2 toPos, ImU32 color = IM_COL32_WHITE, float thickness = 2.0f, float arrowHeadWidth= 10.0f,
-                             float arrowHeadLength= 15.0f);
-        static void DrawConnection(const VisualNode* fromNode, const VisualNode* toNode);
+        static void DrawLine(const ImVec2 fromPos, const ImVec2 toPos, ImU32 color = IM_COL32_WHITE, const float thickness = 2.0f, float
+                             arrowHeadWidth = 10.0f,
+                             float arrowHeadLength = 15.0f, const float curve = 0.0f, VisualNode* fromNode = nullptr, VisualNode* targetNode = nullptr);
+        static void DrawConnection(VisualNode* fromNode, VisualNode* toNode);
         void ExportLua(const std::string& filePath) const;
 
         void SetCurrentFsm(const FsmPtr& fsm) { m_Fsm = fsm; }
@@ -56,6 +132,15 @@ namespace LuaFsm
         void SetShowFsmProps(const bool showFsmProps) { m_ShowFsmProps = showFsmProps; }
 
         void SaveFsm(const std::string& filePath) const;
+
+        void CopyNode(VisualNode* node) { m_CopiedNode = node; }
+        [[nodiscard]] VisualNode* GetCopiedNode() const { return m_CopiedNode; }
+        
+        float GetScale() const { return m_Scale; }
+        void SetScale(const float scale) { m_Scale = scale; }
+
+        bool IsDragging() const { return m_IsDragging; }
+        void SetDragging(const bool dragging) { m_IsDragging = dragging; }
         
     public:
         inline static uint32_t nodeWindowFlags = ImGuiWindowFlags_NoCollapse
@@ -74,11 +159,13 @@ namespace LuaFsm
         VisualNode* m_SelectedNode = nullptr;
         VisualNode* m_LastNode = nullptr;
         bool m_ShowFsmProps = false;
+        bool m_IsDragging = false;
+        VisualNode* m_CopiedNode = nullptr;
         ImFont* m_Font = nullptr;
         bool m_IsCreatingLink = false;
         FsmPtr m_Fsm = nullptr;
         static NodeEditor* m_Instance;
-        
+        float m_Scale = 1.0f;
     };
     
 }

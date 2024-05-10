@@ -259,11 +259,13 @@ namespace LuaFsm
 
     std::string FileReader::ReadAllText(const std::string& path)
     {
-        std::ifstream file(path);
+        std::string filePath = path;
+        std::ranges::replace(filePath, '\\', '/');
+        std::ifstream file(filePath);
         if (!file.is_open())
         {
-            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Can not open file: %s", path.c_str()});
-            LOG_ERROR("Failed to open file: {0}", path);
+            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Can not open file: %s", filePath.c_str()});
+            LOG_ERROR("Failed to open file: {0}", filePath);
             return "";
         }
         std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());

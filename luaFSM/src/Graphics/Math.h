@@ -3,6 +3,35 @@
 
 namespace LuaFsm
 {
+    inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs)
+    {
+        return {lhs.x + rhs.x, lhs.y + rhs.y};
+    }
+    inline ImVec2 operator+(const ImVec2& lhs, const float& value)
+    {
+        return {lhs.x + value, lhs.y + value};
+    }
+    inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs)
+    {
+        return {lhs.x - rhs.x, lhs.y - rhs.y};
+    }
+    inline ImVec2 operator-(const ImVec2& lhs, const float& value)
+    {
+        return {lhs.x - value, lhs.y - value};
+    }
+    inline ImVec2 operator*(const ImVec2& lhs, const ImVec2& rhs)
+    {
+        return {lhs.x * rhs.x, lhs.y * rhs.y};
+    }
+    inline ImVec2 operator*(const ImVec2& lhs, const float& value)
+    {
+        return {lhs.x * value, lhs.y * value};
+    }
+    inline ImVec2 operator/(const ImVec2& lhs, const float& value)
+    {
+        return {lhs.x / value, lhs.y / value};
+    }
+    
     class Math
     {
     public:
@@ -10,7 +39,7 @@ namespace LuaFsm
         static ImVec2 ClosestPointOnCircle(ImVec2 center, float radius, ImVec2 point);
         static ImVec2 ClosestPointOnDiamond(ImVec2 center, float width, float height, ImVec2 point);
         static ImVec2 ClosestPointOnEllipse(ImVec2 center, float a, float b, ImVec2 point);
-
+        
         static float Distance(const ImVec2& a, const ImVec2& b)
         {
             return sqrtf((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
@@ -25,7 +54,7 @@ namespace LuaFsm
         }
         static float GetCircleWindowSideLength(const float radius)
         {
-            return radius * 2 + 10.0f;
+            return radius * 2;
         }
         static ImVec2 AddVec2(const ImVec2& a, const ImVec2& b)
         {

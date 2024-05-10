@@ -54,36 +54,81 @@ namespace LuaFsm
             return {0, 0};
         return {vec.x / length, vec.y / length};
     }
-
-    void NodeEditor::DrawLine(const ImVec2 fromPos, const ImVec2 toPos, ImU32 color, const float thickness, const float arrowHeadWidth, const float arrowHeadLength)
+    
+    void NodeEditor::DrawLine(const ImVec2 fromPos, const ImVec2 toPos, ImU32 color,
+    const float thickness, float arrowHeadWidth, float arrowHeadLength,
+    const float curve, VisualNode* fromNode, VisualNode* targetNode
+    )
     {
         ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const auto scale = Get()->GetScale();
+        arrowHeadWidth *= scale;
+        arrowHeadLength *= scale;
         color = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
-        const ImVec2 direction = Math::SubtractVec2(toPos, fromPos);
+
+        const ImVec2 direction = toPos - fromPos;
         const ImVec2 normalizedDirection = normalize(direction);
         const ImVec2 perpendicular(-normalizedDirection.y, normalizedDirection.x);
-        // Arrow parameters
-        const ImVec2 arrowTip = toPos;
-        const ImVec2 leftCorner = Math::AddVec2(
-            Math::SubtractVec2(
-            arrowTip,
-            Math::MultiplyVec2(normalizedDirection, arrowHeadLength)),
-            Math::MultiplyVec2(perpendicular, arrowHeadWidth));
-        const ImVec2 rightCorner = Math::SubtractVec2(
-            Math::SubtractVec2(
-            arrowTip,
-            Math::MultiplyVec2(normalizedDirection, arrowHeadLength)),
-            Math::MultiplyVec2(perpendicular, arrowHeadWidth));
-                        
-        drawList->AddLine(fromPos, toPos, color, thickness);
+
+        const float lineLength = Math::Distance(fromPos, toPos);
+        const ImVec2 midPoint = fromPos + normalizedDirection * (lineLength * 0.5f);
+
+        ImVec2 arrowTip = toPos;
+        ImVec2 leftCorner, rightCorner;
+
+        if (curve > 0.01f || curve < -0.01f && fromNode && targetNode)
+        {
+            ImVec2 controlPoint = midPoint + perpendicular * (lineLength * curve);
+            ImVec2 newFromPos = fromNode->GetFromPoint(controlPoint);
+            ImVec2 newToPos = targetNode->GetFromPoint(controlPoint);
+            targetNode->SetLastConnectionPoint(newToPos);
+
+            // Calculate the tangent at the end of the Bezier curve
+            ImVec2 tangent = normalize(newToPos - controlPoint);
+
+            // Adjust the arrowhead direction to align with the tangent
+            arrowTip = newToPos;
+            leftCorner = (arrowTip - tangent * arrowHeadLength) + (ImVec2(-tangent.y, tangent.x) * arrowHeadWidth);
+            rightCorner = (arrowTip - tangent * arrowHeadLength) - (ImVec2(-tangent.y, tangent.x) * arrowHeadWidth);
+
+            drawList->PathLineTo(newFromPos);
+            drawList->PathBezierCubicCurveTo(controlPoint, controlPoint, newToPos);
+            drawList->PathStroke(color, false, thickness);
+        }
+        else
+        {
+            drawList->AddLine(fromPos, toPos, color, thickness);
+            if (targetNode)
+                targetNode->SetLastConnectionPoint(toPos);
+
+            // For a straight line, use the original direction for the arrowhead
+            leftCorner = (arrowTip - normalizedDirection * arrowHeadLength) + (perpendicular * arrowHeadWidth);
+            rightCorner = (arrowTip - normalizedDirection * arrowHeadLength) - (perpendicular * arrowHeadWidth);
+        }
+
+        // Draw the arrow head
         drawList->AddTriangleFilled(arrowTip, leftCorner, rightCorner, color);
     }
-
-    void NodeEditor::DrawConnection(const VisualNode* fromNode, const VisualNode* toNode)
+    void NodeEditor::DrawConnection(VisualNode* fromNode, VisualNode* toNode)
     {
-        const auto fromPos = fromNode->GetFromPoint(toNode);
-        const auto toPos = toNode->GetFromPoint(fromNode);
-        DrawLine(fromPos, toPos);
+        auto fromPos = fromNode->GetFromPoint(toNode);
+        auto toPos = toNode->GetFromPoint(fromNode);
+        float curve;
+        if (fromNode->GetType() == NodeType::Transition)
+        {
+            curve = fromNode->GetInArrowCurve();
+        }
+        else
+        {
+            curve = toNode->GetOutArrowCurve();
+        }
+        DrawLine(fromPos,
+                 toPos,
+                 ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]),
+                 2.0f,
+                 10.0f,
+                 15.0f,
+                 curve,fromNode,toNode);
     }
 
     void NodeEditor::ExportLua(const std::string& filePath) const
