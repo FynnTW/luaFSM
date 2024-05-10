@@ -194,6 +194,25 @@ namespace LuaFsm
                 GetNode()->SetGridPos(position);
             }
         }
+        if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassTableRegex(m_Id, "color")))
+        {
+            std::string tableContent = match[1].str();
+            std::regex idRegex = FsmRegex::ClassTableElementsRegex();
+            std::sregex_iterator iter(tableContent.begin(), tableContent.end(), idRegex);
+            std::vector<float> elements;
+            for (std::sregex_iterator end; iter != end; ++iter) {
+                elements.push_back(std::stof((*iter)[1].str()));
+            }
+            if (elements.size() >= 4)
+            {
+                ImColor color{};
+                color.Value.x = elements[0];
+                color.Value.y = elements[1];
+                color.Value.z = elements[2];
+                color.Value.w = elements[3];
+                GetNode()->SetColor(color);
+            }
+        }
         std::string onEnter;
         std::regex onEnterRegex = FsmRegex::FunctionBody(m_Id, "onEnter");
         if (std::smatch match; std::regex_search(code, match, onEnterRegex))
@@ -273,6 +292,27 @@ namespace LuaFsm
         }
         else
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s position entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassTableRegex(oldId, "color");
+        if (std::smatch match; std::regex_search(code, match, regex))
+        {
+            std::string tableContent = match[1].str();
+            std::regex idRegex = FsmRegex::ClassTableElementsRegex();
+            std::sregex_iterator iter(tableContent.begin(), tableContent.end(), idRegex);
+            std::vector<float> elements;
+            for (std::sregex_iterator end; iter != end; ++iter) {
+                elements.push_back(std::stof((*iter)[1].str()));
+            }
+            if (elements.size() >= 4)
+            {
+                ImColor color{};
+                color.Value.x = elements[0];
+                color.Value.y = elements[1];
+                color.Value.z = elements[2];
+                color.Value.w = elements[3];
+                color = GetNode()->GetColor();
+                code = std::regex_replace(code, regex, fmt::format("{0}.color = {{{1}, {2}, {3}, {4}}}", m_Id, color.Value.x, color.Value.y, color.Value.z, color.Value.w));
+            }
+        }
         regex = FsmRegex::FunctionBodyReplace(oldId, "onEnter");
         if (std::smatch match; std::regex_search(code, match, regex))
         {
@@ -379,6 +419,13 @@ namespace LuaFsm
                 ImGui::InputTextMultiline(descriptionLabel.c_str(), &description, {ImGui::GetContentRegionAvail().x, 100});
                  SetDescription(description);
                 ImGui::Separator();
+                auto color = m_Node.GetColor();
+                ImGui::ColorEdit4("Node Color", reinterpret_cast<float*>(&color));
+                m_Node.SetColor(color);
+                m_Node.SetCurrentColor(color);
+                if (m_Node.IsSelected())
+                    m_Node.HighLightSelected();
+                ImGui::Separator();
                 ImGui::Text("Triggers");
                 ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Add Trigger").c_str()))
@@ -464,7 +511,8 @@ namespace LuaFsm
                 ImGui::InputText(MakeIdString("ID").c_str(), &key);
                 static std::string name;
                 ImGui::InputText(MakeIdString("Name").c_str(), &name);
-                if (!key.empty() && !name.empty()
+                if (const auto invalid = std::regex_search(key, FsmRegex::InvalidIdRegex());
+                    !invalid && !key.empty() && !name.empty()
                     && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key)
                     && !NodeEditor::Get()->GetCurrentFsm()->GetState(key)
                     && ImGui::Button(MakeIdString("Add Trigger").c_str()))
@@ -479,6 +527,16 @@ namespace LuaFsm
                     name = "";
                     ImGui::CloseCurrentPopup();
                 }
+                else if (invalid)
+                    ImGui::Text("Invalid ID");
+                else if (key.empty())
+                    ImGui::Text("ID can't be empty");
+                else if (name.empty())
+                    ImGui::Text("Name can't be empty");
+                else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key))
+                    ImGui::Text("Trigger with this ID already exists");
+                else if (NodeEditor::Get()->GetCurrentFsm()->GetState(key))
+                    ImGui::Text("State with this ID already exists");
                 ImGui::SameLine();
                 if (ImGui::Button("Cancel"))
                 {
@@ -519,13 +577,25 @@ namespace LuaFsm
             {
                 static std::string newId;
                 ImGui::InputText(MakeIdString("New ID").c_str(), &newId);
-                if (!newId.empty() && ImGui::Button(MakeIdString("Refactor ID").c_str()))
+                if (const auto invalid = std::regex_search(newId, FsmRegex::InvalidIdRegex());
+                    !invalid && !newId.empty()
+                    && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(newId)
+                    && !NodeEditor::Get()->GetCurrentFsm()->GetState(newId)
+                    && ImGui::Button(MakeIdString("Refactor ID").c_str()))
                 {
                     RefactorId(newId);
                     SET_NEW_ID = false;
                     newId = "";
                     ImGui::CloseCurrentPopup();
                 }
+                else if (invalid)
+                    ImGui::Text("Invalid ID");
+                else if (newId.empty())
+                    ImGui::Text("ID can't be empty");
+                else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(newId))
+                    ImGui::Text("Trigger with this ID already exists");
+                else if (NodeEditor::Get()->GetCurrentFsm()->GetState(newId))
+                    ImGui::Text("State with this ID already exists");
                 ImGui::SameLine();
                 if (ImGui::Button("Cancel"))
                 {
@@ -591,6 +661,7 @@ namespace LuaFsm
         code += fmt::format("{0}.name = \"{1}\"\n", m_Id, m_Name);
         code += fmt::format("{0}.description = \"{1}\"\n", m_Id, m_Description);
         code += fmt::format("{0}.editorPos = {{{1}, {2}}}\n", m_Id, m_Node.GetGridPos().x, m_Node.GetGridPos().y);
+        code += fmt::format("{0}.color = {{{1}, {2}, {3}, {4}}}\n", m_Id, m_Node.GetColor().Value.x, m_Node.GetColor().Value.y, m_Node.GetColor().Value.z, m_Node.GetColor().Value.w);
         if (!m_OnUpdate.empty())
         {
             code += fmt::format("\nfunction {0}:onUpdate()\n", m_Id);

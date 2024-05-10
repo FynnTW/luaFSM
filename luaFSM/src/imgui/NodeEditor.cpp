@@ -72,7 +72,16 @@ namespace LuaFsm
 
         const float lineLength = Math::Distance(fromPos, toPos);
         const ImVec2 midPoint = fromPos + normalizedDirection * (lineLength * 0.5f);
-
+        if (fromNode && fromNode->GetType() == NodeType::Transition)
+        {
+            color = ImColor(155, 255, 155, 255);
+            fromNode->SetOutLineMidPoint(midPoint);
+        }
+        if (targetNode && targetNode->GetType() == NodeType::Transition)
+        {
+            color = ImColor(255, 155, 155, 255);
+            targetNode->SetInLineMidPoint(midPoint);
+        }
         ImVec2 arrowTip = toPos;
         ImVec2 leftCorner, rightCorner;
 
@@ -116,11 +125,11 @@ namespace LuaFsm
         float curve;
         if (fromNode->GetType() == NodeType::Transition)
         {
-            curve = fromNode->GetInArrowCurve();
+            curve = fromNode->GetOutArrowCurve();
         }
         else
         {
-            curve = toNode->GetOutArrowCurve();
+            curve = toNode->GetInArrowCurve();
         }
         DrawLine(fromPos,
                  toPos,

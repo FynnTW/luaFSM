@@ -16,6 +16,13 @@ namespace LuaFsm
             std::regex regex(string);
             return regex;
         }
+        
+        static std::regex InvalidIdRegex()
+        {
+            const auto string = R"((?:\s|,|\.|\/|\\|\(|\)|\[|\]|\{|\}|\*|\+|\?|\^|\$|\||\!|\@|\#|\%|\&|\=|\:|\;|\"|\'|\<|\>|\`|\~|\-))";
+            std::regex regex(string);
+            return regex;
+        }
 
         static std::regex ClassIntegerRegex(const std::string &id, const std::string &fieldName)
         {
@@ -26,7 +33,7 @@ namespace LuaFsm
 
         static std::regex ClassFloatRegex(const std::string &id, const std::string &fieldName)
         {
-            const auto string =  fmt::format(R"({0}\.{1}\s*=\s*([\.0-9]+))", id, fieldName);
+            const auto string =  fmt::format(R"({0}\.{1}\s*=\s*(\-*[\.0-9]+))", id, fieldName);
             std::regex regex(string);
             return regex;
         }
@@ -41,7 +48,7 @@ namespace LuaFsm
 
         static std::regex ClassTableElementsRegex()
         {
-            const auto string = R"(([\.0-9]+)(?:,|$))";
+            const auto string = R"((\-*[\.0-9]+)(?:,|$))";
             std::regex regex(string);
             return regex;
         }
@@ -141,6 +148,15 @@ namespace LuaFsm
 
         bool IsDragging() const { return m_IsDragging; }
         void SetDragging(const bool dragging) { m_IsDragging = dragging; }
+
+        bool IsSettingInCurve() const { return m_IsSettingInCurve; }
+        void SetSettingInCurve(const bool settingInCurve) { m_IsSettingInCurve = settingInCurve; }
+
+        bool IsSettingOutCurve() const { return m_IsSettingOutCurve; }
+        void SetSettingOutCurve(const bool settingOutCurve) { m_IsSettingOutCurve = settingOutCurve; }
+
+        void SetCurveNode(VisualNode* node) { m_CurveNode = node; }
+        [[nodiscard]] VisualNode* GetCurveNode() const { return m_CurveNode; }
         
     public:
         inline static uint32_t nodeWindowFlags = ImGuiWindowFlags_NoCollapse
@@ -160,6 +176,9 @@ namespace LuaFsm
         VisualNode* m_LastNode = nullptr;
         bool m_ShowFsmProps = false;
         bool m_IsDragging = false;
+        bool m_IsSettingInCurve = false;
+        bool m_IsSettingOutCurve = false;
+        VisualNode* m_CurveNode = nullptr;
         VisualNode* m_CopiedNode = nullptr;
         ImFont* m_Font = nullptr;
         bool m_IsCreatingLink = false;
