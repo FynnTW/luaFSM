@@ -53,6 +53,7 @@ namespace LuaFsm
     {
     public:
         [[nodiscard]] ImVec2 GetPosition();
+        VisualNode* Draw2(const DrawableObject* object);
         VisualNode* Draw(const DrawableObject* object);
         [[nodiscard]] ImVec2 GetTargetPosition() const { return m_TargetPosition; }
         void SetTargetPosition(const ImVec2& targetPosition) { m_TargetPosition = targetPosition; }
@@ -122,56 +123,26 @@ namespace LuaFsm
             };
         }
         void HandleSelection(NodeEditor* editor);
-        ImVec2 InitSizes()
-        {
-            auto sideLength = Math::GetCircleWindowSideLength(m_Radius);
-            m_Size = {sideLength, sideLength};
-            m_Center = {sideLength / 2, sideLength / 2};
-            m_Shape = NodeShape::Circle;
-            return m_Size;
-        }
-        ImVec2 InitSizes2()
-        {
-            m_Radius = 12.f;
-            auto sideLength = Math::GetCircleWindowSideLength(m_Radius);
-            m_Size = {sideLength, sideLength};
-            m_Center = {sideLength / 2, sideLength / 2};
-            m_Shape = NodeShape::Circle;
-            return m_Size;
-        }
-        ImVec2 InitSizesEllipse(const std::string& name)
-        {
-            const float width = ImGui::CalcTextSize(name.c_str()).x + 50.0f;
-            const float height = ImGui::CalcTextSize(name.c_str()).y + 30.0f;
-            m_Size = {width + 10, height + 3};
-            m_EllipseRadius = {width / 2, height / 2};
-            m_Center = {width / 2, height / 2};
-            m_Shape = NodeShape::Ellipse;
-            return m_Size;
-        }
-        ImVec2 InitSizesDiamond(const std::string& name)
-        {
-            float width = ImGui::CalcTextSize(name.c_str()).x + 50.0f;
-            float height = ImGui::CalcTextSize(name.c_str()).y + 80.0f;
-            m_Size = {width, height};
-            m_Center = {width / 2, height / 2};
-            m_Shape = NodeShape::Diamond;
-            return m_Size;
-        }
-        ImVec2 InitSizesDiamond2()
-        {
-            m_Size = {65, 60};
-            m_Center = {m_Size.x / 2.f, m_Size.y / 2.f};
-            m_Shape = NodeShape::Diamond;
-            return Math::AddVec2(m_Size, {2,2});
-        }
+        ImVec2 InitSizes(const std::string& name);
         ImVec2 GetTextPos (const char* text);
         [[nodiscard]] ImVec2 GetDrawPos()
         {
             m_Position = ImGui::GetWindowPos();
             return Math::AddVec2(m_Position, GetCenter());
         }
-        [[nodiscard]] ImVec2 GetLastDrawPos() const { return Math::AddVec2(m_Position, GetCenter()); }
+        [[nodiscard]] ImVec2 GetLastDrawPos2() const { return Math::AddVec2(m_Position, GetCenter()); }
+        [[nodiscard]] ImVec2 GetLastDrawPos() const { return m_LastPosition; }
+
+        ImVec2 GetGridPos() const { return m_GridPos; }
+        void SetGridPos(const ImVec2& gridPos) { m_GridPos = gridPos; }
+        ImVec2 GetEllipseRadius() const { return m_EllipseRadius; }
+        void SetEllipseRadius(const ImVec2& ellipseRadius) { m_EllipseRadius = ellipseRadius; }
+        void SetInArrowCurve(const float inArrowCurve) { m_InArrowCurve = inArrowCurve; }
+        void SetOutArrowCurve(const float outArrowCurve) { m_OutArrowCurve = outArrowCurve; }
+        float GetInArrowCurve() const { return m_InArrowCurve; }
+        float GetOutArrowCurve() const { return m_OutArrowCurve; }
+        void SetLastConnectionPoint(const ImVec2& lastConnectionPoint) { m_LastConnectionPoint = lastConnectionPoint; }
+        ImVec2 GetLastConnectionPoint() const { return m_LastConnectionPoint; }
 
     private:
         ImVec2 m_Position{-1.0f, -1.0f};
@@ -184,9 +155,13 @@ namespace LuaFsm
         std::string m_Id;
         bool m_Selected = false;
         bool m_IsVisible = false;
+        float m_InArrowCurve = 0.0f;
+        float m_OutArrowCurve = 0.0f;
         int m_WindowLabel = 0;
+        ImVec2 m_LastConnectionPoint = {0, 0};
         NodeShape m_Shape = NodeShape::Circle;
         NodeType m_Type = NodeType::State;
+        ImVec2 m_GridPos = {1048,1032};
         ImColor m_Color = IM_COL32(0, 80, 80, 150);
         ImColor m_HighLightColor = IM_COL32(25, 125, 125, 175);
         ImColor m_HighLightColorSelected = IM_COL32(50, 150, 150, 200);

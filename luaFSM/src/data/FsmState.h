@@ -32,13 +32,15 @@ namespace LuaFsm
         [[nodiscard]] std::string MakeIdString(const std::string& name) const;
         static std::vector<std::shared_ptr<FsmState>> CreateFromFile(const std::string& filePath);
         void UpdateFromFile(const std::string& filePath);
-        void UpdateFileContents(std::string& code);
-        void UpdateToFile();
+        void UpdateFileContents(std::string& code, const std::string& oldId);
+        void RefactorId(const std::string& newId);
+        void UpdateToFile(const std::string& oldId);
         void DrawProperties();
         void AddTrigger(const FsmTriggerPtr& value);
         FsmTriggerPtr GetTrigger(const std::string& key);
         void ClearTriggers() { m_Triggers.clear(); }
         void RemoveTrigger(const std::string& trigger);
+        void AppendToFile();
         std::string GetExportLuaCode();
         std::string GetLuaCode();
         [[nodiscard]] ImVec2 GetPosition() { return m_Node.GetPosition(); }

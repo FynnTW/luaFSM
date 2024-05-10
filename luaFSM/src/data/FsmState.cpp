@@ -191,7 +191,7 @@ namespace LuaFsm
                 ImVec2 position;
                 position.x = elements[0];
                 position.y = elements[1];
-                GetNode()->SetTargetPosition(position);
+                GetNode()->SetGridPos(position);
             }
         }
         std::string onEnter;
@@ -210,7 +210,7 @@ namespace LuaFsm
         UpdateEditors();
     }
 
-    void FsmState::UpdateToFile()
+    void FsmState::UpdateToFile(const std::string& oldId)
     {
         if (!NodeEditor::Get()->GetCurrentFsm())
             return;
@@ -220,36 +220,39 @@ namespace LuaFsm
         auto code = FileReader::ReadAllText(filePath);
         if (code.empty())
             return;
-        UpdateFileContents(code);
+        UpdateFileContents(code, oldId);
         std::ofstream file(filePath);
         if (!file.is_open())
         {
             ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
             return;
         }
+        file << code;
         file.close();
     }
 
-    void FsmState::UpdateFileContents(std::string& code)
+    void FsmState::UpdateFileContents(std::string& code, const std::string& oldId)
     {
-        std::regex idRegex = FsmRegex::IdRegexClass("FSM_STATE", m_Id);
-        if (!std::regex_search(code, idRegex))
+        UpdateEditors();
+        std::regex regex = FsmRegex::IdRegexClass("FSM_STATE", oldId);
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("---@FSM_STATE {}", m_Id));
+        else
         {
-            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "No Entry for state %s found in file", m_Id.c_str()});
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "No Entry for state %s found in file", oldId.c_str()});
             return;
         }
-        UpdateEditors();
-        std::regex regex = FsmRegex::ClassStringRegex(m_Id, "name");
+        regex = FsmRegex::ClassStringRegex(oldId, "name");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.name = \"{1}\"", m_Id, m_Name));
         else if (!m_Name.empty())
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s name entry not found in file!", m_Id.c_str()});
-        regex = FsmRegex::ClassStringRegex(m_Id, "description");
+        regex = FsmRegex::ClassStringRegex(oldId, "description");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.description = \"{1}\"", m_Id, m_Description));
         else if (!m_Description.empty())
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s description entry not found in file!", m_Id.c_str()});
-        regex = FsmRegex::ClassTableRegex(m_Id, "editorPos");
+        regex = FsmRegex::ClassTableRegex(oldId, "editorPos");
         if (std::smatch match; std::regex_search(code, match, regex))
         {
             std::string tableContent = match[1].str();
@@ -264,43 +267,72 @@ namespace LuaFsm
                 ImVec2 position;
                 position.x = elements[0];
                 position.y = elements[1];
-                position = GetNode()->GetTargetPosition();
+                position = GetNode()->GetGridPos();
                 code = std::regex_replace(code, regex, fmt::format("{0}.editorPos = {{{1}, {2}}}", m_Id, position.x, position.y));
             }
         }
         else
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s position entry not found in file!", m_Id.c_str()});
-        regex = FsmRegex::FunctionBodyReplace(m_Id, "onEnter");
+        regex = FsmRegex::FunctionBodyReplace(oldId, "onEnter");
         if (std::smatch match; std::regex_search(code, match, regex))
         {
             std::string func;
             for (const auto& line : m_OnEnterEditor.GetTextLines())
                 func += fmt::format("\t{0}\n", line);
             code = std::regex_replace(code, regex, "$1\n" + func + "$3");
+            auto regexString = fmt::format("({0}:onEnter)", oldId);
+            regex = std::regex(regexString);
+            code = std::regex_replace(code, regex, fmt::format("{0}:onEnter", m_Id));
         }
         else if (!m_OnEnter.empty())
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s onEnter entry not found in file!", m_Id.c_str()});
-        regex = FsmRegex::FunctionBodyReplace(m_Id, "onUpdate");
+        regex = FsmRegex::FunctionBodyReplace(oldId, "onUpdate");
         if (std::smatch match; std::regex_search(code, match, regex))
         {
             std::string func;
             for (const auto& line : m_OnUpdateEditor.GetTextLines())
                 func += fmt::format("\t{0}\n", line);
             code = std::regex_replace(code, regex, "$1\n" + func + "$3");
+            auto regexString = fmt::format("({0}:onUpdate)", oldId);
+            regex = std::regex(regexString);
+            code = std::regex_replace(code, regex, fmt::format("{0}:onEnter", m_Id));
         }
         else if (!m_OnUpdate.empty())
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s onUpdate entry not found in file!", m_Id.c_str()});
-        regex = FsmRegex::FunctionBodyReplace(m_Id, "onExit");
+        regex = FsmRegex::FunctionBodyReplace(oldId, "onExit");
         if (std::smatch match; std::regex_search(code, match, regex))
         {
             std::string func;
             for (const auto& line : m_OnExitEditor.GetTextLines())
                 func += fmt::format("\t{0}\n", line);
             code = std::regex_replace(code, regex, "$1\n" + func + "$3");
+            auto regexString = fmt::format("({0}:onExit)", oldId);
+            regex = std::regex(regexString);
+            code = std::regex_replace(code, regex, fmt::format("{0}:onEnter", m_Id));
         }
         else if (!m_OnExit.empty())
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s onExit entry not found in file!", m_Id.c_str()});
     }
+
+    void FsmState::RefactorId(const std::string& newId)
+    {
+        const auto fsm = NodeEditor::Get()->GetCurrentFsm();
+        const std::string oldId = m_Id;
+        if (!fsm)
+            return;
+        if (fsm->GetTrigger(newId) || fsm->GetState(newId))
+        {
+            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "State with id %s already exists!", newId.c_str()});
+            return;
+        }
+        SetId(newId);
+        if (fsm->GetLinkedFile().empty())
+            return;
+        UpdateToFile(oldId);
+        fsm->UpdateToFile();
+    }
+
+    bool SET_NEW_ID = false;
     
     void FsmState::DrawProperties()
     {
@@ -326,6 +358,14 @@ namespace LuaFsm
         {
             if (ImGui::BeginTabItem(MakeIdString("State Properties").c_str()))
             {
+                /*
+                ImGui::Text("Position: %f, %f", m_Node.GetGridPos().x, m_Node.GetGridPos().y);
+                ImGui::Text("DrawPos: %f, %f", m_Node.GetLastDrawPos().x, m_Node.GetLastDrawPos().y);
+                */
+                ImGui::Text("ID: %s", GetId().c_str());
+                ImGui::SameLine();
+                if (ImGui::Button(MakeIdString("Refactor ID").c_str()))
+                    SET_NEW_ID = true;
                 ImGui::Text("Name");
                 std::string name = GetName();
                 std::string nameLabel = "##Name" + GetId();
@@ -349,7 +389,11 @@ namespace LuaFsm
                     {
                         ImGui::Selectable(MakeIdString(key).c_str(), false);
                         if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                        {
                             NodeEditor::Get()->SetSelectedNode(value->GetNode());
+                            if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"))
+                                canvas->Scroll = value->GetNode()->GetGridPos() - NodeEditor::Get()->GetCanvasSize() / 2;
+                        }
                         if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                         {
                             TRIGGER_TO_REMOVE = key;
@@ -420,12 +464,16 @@ namespace LuaFsm
                 ImGui::InputText(MakeIdString("ID").c_str(), &key);
                 static std::string name;
                 ImGui::InputText(MakeIdString("Name").c_str(), &name);
-                if (!key.empty() && !name.empty() && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key) && ImGui::Button(MakeIdString("Add Trigger").c_str()))
+                if (!key.empty() && !name.empty()
+                    && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key)
+                    && !NodeEditor::Get()->GetCurrentFsm()->GetState(key)
+                    && ImGui::Button(MakeIdString("Add Trigger").c_str()))
                 {
                     auto newTrigger = AddTrigger(key);
                     newTrigger->SetName(name);
                     IS_ADD_TRIGGER_OPEN = false;
                     ImGui::SetClipboardText(newTrigger->GetLuaCode().c_str());
+                    newTrigger->AppendToFile();
                     ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Condition added: %s, code copied to clipboard", key.c_str()});
                     key = "";
                     name = "";
@@ -462,6 +510,31 @@ namespace LuaFsm
                 ImGui::EndPopup();
             }
         }
+
+        if (SET_NEW_ID)
+        {
+            std::string popupId = MakeIdString("Refactor ID");
+            ImGui::OpenPopup(popupId.c_str());
+            if (ImGui::BeginPopup(popupId.c_str()))
+            {
+                static std::string newId;
+                ImGui::InputText(MakeIdString("New ID").c_str(), &newId);
+                if (!newId.empty() && ImGui::Button(MakeIdString("Refactor ID").c_str()))
+                {
+                    RefactorId(newId);
+                    SET_NEW_ID = false;
+                    newId = "";
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel"))
+                {
+                    SET_NEW_ID = false;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+        }
     }
 
     void FsmState::AddTrigger(const FsmTriggerPtr& value)
@@ -485,6 +558,29 @@ namespace LuaFsm
         obj->SetCurrentState("");
         m_Triggers.erase(trigger);
     }
+
+    void FsmState::AppendToFile()
+    {
+        if (const auto fsm = NodeEditor::Get()->GetCurrentFsm(); fsm)
+        {
+            const auto filePath = fsm->GetLinkedFile();
+            if (filePath.empty())
+                return;
+            auto code = FileReader::ReadAllText(filePath);
+            if (code.empty())
+                return;
+            code += "\n\n";
+            code += GetLuaCode();
+            std::ofstream file(filePath);
+            if (!file.is_open())
+            {
+                ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+                return;
+            }
+            file << code;
+            file.close();
+        }
+    }
     
     std::string FsmState::GetLuaCode()
     {
@@ -494,7 +590,7 @@ namespace LuaFsm
         code += fmt::format("local {0} = FSM_STATE:new({{}})\n", m_Id);
         code += fmt::format("{0}.name = \"{1}\"\n", m_Id, m_Name);
         code += fmt::format("{0}.description = \"{1}\"\n", m_Id, m_Description);
-        code += fmt::format("{0}.editorPos = {{{1}, {2}}}\n", m_Id, m_Node.GetTargetPosition().x, m_Node.GetTargetPosition().y);
+        code += fmt::format("{0}.editorPos = {{{1}, {2}}}\n", m_Id, m_Node.GetGridPos().x, m_Node.GetGridPos().y);
         if (!m_OnUpdate.empty())
         {
             code += fmt::format("\nfunction {0}:onUpdate()\n", m_Id);
@@ -526,6 +622,6 @@ namespace LuaFsm
     
     VisualNode* FsmState::DrawNode()
     {
-        return m_Node.Draw(this);
+        return m_Node.Draw2(this);
     }
 }

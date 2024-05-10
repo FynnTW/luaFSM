@@ -98,7 +98,6 @@ namespace LuaFsm
     
     void Fsm::DrawProperties()
     {
-        std::string id = GetId();
         if (ImGui::Button("Generate code"))
         {
             m_LuaCodeEditor.SetText(GetLuaCode());
@@ -116,7 +115,6 @@ namespace LuaFsm
         {
             if (ImGui::BeginTabItem("FSM Properties"))
             {
-                ImGui::InputText("Id", &id);
                 ImGui::InputText("Name", &m_Name);
                 ImGui::Separator();
                 ImGui::Text("Initial State: ");
@@ -126,7 +124,11 @@ namespace LuaFsm
                     ImGui::Selectable(GetInitialStateId().c_str(), false);
                 }
                 if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                {
                     NodeEditor::Get()->SetSelectedNode(NodeEditor::Get()->GetNode(GetInitialStateId()));
+                    if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"))
+                        canvas->Scroll = NodeEditor::Get()->GetNode(GetInitialStateId())->GetGridPos() - NodeEditor::Get()->GetCanvasSize() / 2;
+                }
                 ImGui::Separator();
                 ImGui::Text("Linked Lua File: ");
                 ImGui::SameLine();
@@ -147,11 +149,6 @@ namespace LuaFsm
             }
             
             ImGui::EndTabBar();
-        }
-        
-        if (id != GetId())
-        {
-            SetId(id);
         }
     }
     
@@ -232,9 +229,9 @@ namespace LuaFsm
         else if (!m_InitialStateId.empty())
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Initial state ID entry not found in file!"});
         for (const auto& value : m_States | std::views::values)
-            value->UpdateFileContents(code);
+            value->UpdateFileContents(code, value->GetId());
         for (const auto& value : m_Triggers | std::views::values)
-            value->UpdateFileContents(code);
+            value->UpdateFileContents(code, value->GetId());
     }
 
     void Fsm::UpdateEditors()

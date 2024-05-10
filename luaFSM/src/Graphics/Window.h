@@ -81,6 +81,11 @@ namespace LuaFsm
         static void OnImGuiRender();
         static void DrawTextEditor(TextEditor& txtEditor, std::string& oldText);
         static void TrimTrailingNewlines(std::string& str);
+        static void RenderNotifications();
+        static void MainMenu();
+        static void MainDockSpace();
+        static void Canvas();
+        static void Properties();
         void EndImGui() const;
         GLFWwindow* GetNativeWindow() const {return m_Window;}
         static [[nodiscard]] ImFont* GetFont(const std::string& name)

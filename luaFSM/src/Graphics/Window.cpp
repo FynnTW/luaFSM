@@ -39,7 +39,6 @@ namespace LuaFsm
     bool ADD_STATE_POPUP = false;
     bool ADD_FSM_POPUP = false;
     bool LOAD_FILE = false;
-    bool SAVE_FSM = false;
     bool SELECT_FILE = false;
     bool OPEN_THEME_EDITOR = false;
     
@@ -48,6 +47,8 @@ namespace LuaFsm
     ImVec2 CURSOR_POS = {0, 0};
     bool ADD_NEW_STATE_AT_CURSOR = false;
     bool ADD_NEW_TRIGGER_AT_CURSOR = false;
+    bool PASTE_NEW_STATE_AT_CURSOR = false;
+    bool PASTE_NEW_TRIGGER_AT_CURSOR = false;
     
     std::string LAST_SAVE_PATH;
     std::string LAST_OPEN_PATH;
@@ -173,27 +174,55 @@ namespace LuaFsm
         ImGui::NewFrame();
         ImGui::PushFont(FONT);
     }
-    
-    void Window::TrimTrailingNewlines(std::string& str)
-    {
-        while (!str.empty() && (str.back() == '\n' || str.back() == '\r'))
-        {
-            str.pop_back();
-        }
-    }
+
     
     void Window::OnImGuiRender()
     {
-        
-        const auto nodeEditor = NodeEditor::Get();
+        RenderNotifications();
+        MainMenu();
+        MainDockSpace();
+        Canvas();
+        Properties();
+    }
+    
+    void Window::EndImGui() const
+    {
+        // Rendering
+        ImGui::PopFont();
+        constexpr auto clearColor = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+        const ImGuiIO& io = ImGui::GetIO(); (void)io;
+        ImGui::Render();
+        GLFWwindow* window = glfwGetCurrentContext();
+        int displayW, displayH;
+        glfwGetFramebufferSize(window, &displayW, &displayH);
+        glViewport(0, 0, displayW, displayH);
+        glClearColor(clearColor.x * clearColor.w, clearColor.y * clearColor.w, clearColor.z * clearColor.w, clearColor.w);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            GLFWwindow* backupCurrentContext = glfwGetCurrentContext();
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+            glfwMakeContextCurrent(backupCurrentContext);
+        }
+        glfwSwapBuffers(window);
+        if (SHUTDOWN)
+            Shutdown();
+    }
+    
+    void Window::RenderNotifications()
+    {
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 1.00f)); // Background color
         ImGui::PushFont(m_Fonts["notificationFont"]);
         ImGui::RenderNotifications();
         ImGui::PopStyleColor(1);
         ImGui::PopFont();
+    }
 
-        //ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.33f, 0.33f, 0.38f, 1.0f));
-        const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+    void Window::MainMenu()
+    {
+        const auto nodeEditor = NodeEditor::Get();
         if (ImGui::BeginMainMenuBar())
         {
             if (ImGui::BeginMenu("File"))
@@ -212,7 +241,7 @@ namespace LuaFsm
                 }
                 if (auto fsm = nodeEditor->GetCurrentFsm(); fsm && !fsm->GetLinkedFile().empty() && ImGui::MenuItem("Save"))
                 {
-                    SAVE_FSM = true;
+                    nodeEditor->GetCurrentFsm()->UpdateToFile();
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Exit"))
@@ -249,39 +278,21 @@ namespace LuaFsm
                 ImGui::Text("Current FSM: ");
                 ImGui::Text(fsm->GetName().c_str());
             }
+            /*
+            * 
+            ImGui::Text("Scale: ");
+            ImGui::SameLine();
+            ImGui::Text("%.2f", nodeEditor->GetScale());
+             */
             ImGui::EndMainMenuBar();
         }
-
-        if (ADD_FSM_POPUP)
-        {
-            ImGui::OpenPopup("Add FSM");
-            ADD_FSM_POPUP = false;
-        }
-
+        
         if (OPEN_THEME_EDITOR)
         {
             ImGui::OpenPopup("Theme Editor");
             OPEN_THEME_EDITOR = false;
         }
-
-        if (SAVE_FSM)
-        {
-            ImGui::OpenPopup("Save FSM");
-            SAVE_FSM = false;
-        }
-
-        if (LOAD_FILE)
-        {
-            ImGui::OpenPopup("Open File");
-            LOAD_FILE = false;
-        }
-
-        if (SELECT_FILE)
-        {
-            ImGui::OpenPopup("SelectFile");
-            SELECT_FILE = false;
-        }
-
+        
         if (ImGui::BeginPopup("Theme Editor"))
         {
             if (!m_ActiveTheme.empty())
@@ -333,17 +344,13 @@ namespace LuaFsm
                 ImGui::EndPopup();
             }
         }
-        if (ImGui::BeginPopup("Save FSM"))
+        
+        if (ADD_FSM_POPUP)
         {
-            if (!nodeEditor->GetCurrentFsm() || nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
-            {
-                ImGui::CloseCurrentPopup();
-                ImGui::EndPopup();
-            }
-            nodeEditor->GetCurrentFsm()->UpdateToFile();
-            ImGui::EndPopup();
+            ImGui::OpenPopup("Add FSM");
+            ADD_FSM_POPUP = false;
         }
-
+        
         if (ImGui::BeginPopup("Add FSM"))
         {
             ImGui::Text("Add FSM");
@@ -380,7 +387,13 @@ namespace LuaFsm
             }
             ImGui::EndPopup();
         }
-
+        
+        if (LOAD_FILE)
+        {
+            ImGui::OpenPopup("Open File");
+            LOAD_FILE = false;
+        }
+        
         if (ImGui::BeginPopup("Open File"))
         {
             static std::string filePath;
@@ -421,7 +434,13 @@ namespace LuaFsm
             }
             ImGui::EndPopup();
         }
-
+        
+        if (SELECT_FILE)
+        {
+            ImGui::OpenPopup("SelectFile");
+            SELECT_FILE = false;
+        }
+        
         if (ImGui::BeginPopup("SelectFile"))
         {
             static std::string filePath;
@@ -471,18 +490,6 @@ namespace LuaFsm
             ImGui::EndPopup();
         }
 
-        // Set window position and size
-        ImGui::SetNextWindowPos(ImVec2(mainViewport->WorkPos.x, mainViewport->WorkPos.y + 30), ImGuiCond_Once);
-        ImGui::SetNextWindowSize(ImVec2(mainViewport->WorkSize.x, mainViewport->WorkSize.y - 30), ImGuiCond_Once);
-
-        // Main window encompassing all elements
-        ImGui::Begin("Node Editor", &MAIN_DOCK_OPENED,
-            ImGuiWindowFlags_NoCollapse
-            | ImGuiWindowFlags_NoTitleBar
-            | ImGuiWindowFlags_NoMove
-            | ImGuiWindowFlags_NoBringToFrontOnFocus
-            | ImGuiWindowFlags_NoResize);
-
         if (ADD_STATE_POPUP)
         {
             ImGui::OpenPopup("Add State");
@@ -497,7 +504,7 @@ namespace LuaFsm
             ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
             static std::string stateName;
             ImGui::InputText("State Name", &stateName, 0);
-            if (!nodeEditor->GetCurrentFsm()->GetState(stateId) && !stateId.empty() && !stateName.empty())
+            if (!nodeEditor->GetCurrentFsm()->GetState(stateId) && !nodeEditor->GetCurrentFsm()->GetTrigger(stateId) && !stateId.empty() && !stateName.empty())
             {
                 if (ImGui::Button("Add"))
                 {
@@ -505,12 +512,13 @@ namespace LuaFsm
                     state->SetName(stateName);
                     nodeEditor->GetCurrentFsm()->AddState(state);
                     ImGui::SetClipboardText(state->GetLuaCode().c_str());
+                    state->AppendToFile();
                     ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", stateId.c_str()});
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::SameLine();
             }
-            else if (nodeEditor->GetCurrentFsm()->GetState(stateId))
+            else if (nodeEditor->GetCurrentFsm()->GetState(stateId) || nodeEditor->GetCurrentFsm()->GetTrigger(stateId))
             {
                 ImGui::Text("State ID already exists");
             }
@@ -528,16 +536,46 @@ namespace LuaFsm
             }
             ImGui::EndPopup();
         }
+    }
+    ImVec2 CANVAS_POS{};
+    ImVec2 CANVAS_SIZE{};
+    ImVec2 CANVAS_CONTENT_MIN{};
+    ImVec2 CANVAS_CONTENT_MAX{};
 
+    void Window::MainDockSpace()
+    {
         
+        const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+        // Set window position and size
+        ImGui::SetNextWindowPos(ImVec2(mainViewport->WorkPos.x, mainViewport->WorkPos.y + 30), ImGuiCond_Once);
+        ImGui::SetNextWindowSize(ImVec2(mainViewport->WorkSize.x, mainViewport->WorkSize.y - 30), ImGuiCond_Once);
 
-        // Dock space setup
-        ImGuiID dockspaceId = ImGui::GetID("NodeEditorDockspace");
-        ImGui::DockSpace(dockspaceId);
-
-        //if (NodeEditor::Get()->GetCurrentFsm())
-        //{
-            // Initialize Docking Layout (only run once)
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        // Main window encompassing all elements
+        ImGui::Begin("Node Editor", &MAIN_DOCK_OPENED,
+            ImGuiWindowFlags_NoCollapse
+            | ImGuiWindowFlags_MenuBar
+            | ImGuiWindowFlags_NoTitleBar
+            | ImGuiWindowFlags_NoMove
+            | ImGuiWindowFlags_NoBringToFrontOnFocus
+            | ImGuiWindowFlags_NoResize);
+        {
+            ImGui::PopStyleVar();
+            /* 
+            if (ImGui::BeginMenuBar())
+            {
+                const auto nodeEditor = NodeEditor::Get();
+                ImGui::Text("Canvas pos: %.1f, %.1f", nodeEditor->GetCanvasPos().x, nodeEditor->GetCanvasPos().y);
+                ImGui::Text("Canvas size: %.1f, %.1f", nodeEditor->GetCanvasSize().x, nodeEditor->GetCanvasSize().y);
+                ImGui::Text("Canvas min: %.1f, %.1f", CANVAS_CONTENT_MIN.x, CANVAS_CONTENT_MIN.y);
+                ImGui::Text("Canvas max: %.1f, %.1f", CANVAS_CONTENT_MAX.x, CANVAS_CONTENT_MAX.y);
+                ImGui::Text("mouse pos: %.1f, %.1f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
+                ImGui::EndMenuBar();
+            }*/
+            
+            // Dock space setup
+            ImGuiID dockspaceId = ImGui::GetID("NodeEditorDockspace");
+            ImGui::DockSpace(dockspaceId);
             if (!DOCK_SPACE_SET)
             {
                 ImGui::DockBuilderRemoveNode(dockspaceId); // Clear out existing layout
@@ -553,27 +591,65 @@ namespace LuaFsm
                 ImGui::DockBuilderFinish(dockspaceId);
                 DOCK_SPACE_SET = true;
             }
-        //}
-        ImGui::End();// Define a struct to represent a node
+            ImGui::End();
+        }
+    }
 
+    float MOUSE_SCROLL = 0;
+    bool firstOpen = true;
+    ImVec2 lastScroll = {0, 0};
+    
+    void Window::Canvas()
+    {
+        const auto nodeEditor = NodeEditor::Get();
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         // Canvas window
         ImGui::SetNextWindowContentSize({4096, 4096});
         ImGui::PushFont(nodeEditor->GetFont());
         ImGui::Begin("Canvas", nullptr,
             ImGuiWindowFlags_NoBringToFrontOnFocus
             | ImGuiWindowFlags_NoScrollbar
+            | ImGuiWindowFlags_NoScrollWithMouse
             | ImGuiWindowFlags_NoMove
             );
         if (!NodeEditor::Get()->GetCurrentFsm())
+        {
+            ImGui::PopStyleVar();
             ImGui::End();
+        }
         else
         {
-            if (ImGui::IsWindowFocused() &&
-                ImGui::IsKeyPressed(ImGuiKey_S)
-                && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+            if (firstOpen)
             {
-                if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
-                    nodeEditor->GetCurrentFsm()->UpdateToFile();
+                ImGui::SetScrollX(1024);
+                ImGui::SetScrollY(1024);
+                //lastScroll = ImVec2(1024, 1024);
+                firstOpen = false;
+            }
+            if (ImGui::IsWindowHovered())
+            {
+                if (ImGui::IsKeyPressed(ImGuiKey_S)
+                && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+                {
+                    if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
+                        nodeEditor->GetCurrentFsm()->UpdateToFile();
+                }
+                if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+                {
+                    MOUSE_SCROLL = ImGui::GetIO().MouseWheel * 0.025;
+                    nodeEditor->SetScale(std::min(1.5f, std::max(nodeEditor->GetScale() + MOUSE_SCROLL, 0.5f)));
+                }
+                else
+                {
+                    MOUSE_SCROLL = 0;
+                }
+                if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
+                {
+                    const ImVec2 delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
+                    ImGui::SetScrollX(ImGui::GetScrollX() - delta.x);
+                    ImGui::SetScrollY(ImGui::GetScrollY() - delta.y);
+                    ImGui::ResetMouseDragDelta(ImGuiMouseButton_Middle);
+                }
             }
             if (ImGui::IsKeyPressed(ImGuiKey_F4))
             {
@@ -585,10 +661,34 @@ namespace LuaFsm
                 if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
                     nodeEditor->GetCurrentFsm()->UpdateToFile();
             }
-            nodeEditor->SetCanvasPos(ImGui::GetWindowPos());
+            nodeEditor->SetCanvasPos(Math::AddVec2(ImGui::GetWindowPos(), ImGui::GetWindowContentRegionMin()));
             nodeEditor->SetCanvasSize(ImGui::GetWindowSize());
+            CANVAS_POS = ImGui::GetWindowPos();
+            CANVAS_SIZE = ImGui::GetWindowSize();
+            CANVAS_CONTENT_MIN = ImGui::GetWindowContentRegionMin();
+            CANVAS_CONTENT_MAX = ImGui::GetWindowContentRegionMax();
+            ImGui::SetWindowFontScale(nodeEditor->GetScale());
             for (const auto& [key, state] : nodeEditor->GetCurrentFsm()->GetStates())
                 state->DrawNode();
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)
+                //&& (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) || ImGui::IsWindowFocused())
+                && nodeEditor->IsDragging())
+            {
+                if (const auto selectedNode = nodeEditor->GetSelectedNode(); selectedNode)
+                {
+                    auto newPos = ImGui::GetMousePos() - selectedNode->GetSize() / 2;
+                    newPos.x = std::max(CANVAS_POS.x, newPos.x);
+                    newPos.y = std::max(CANVAS_POS.y, newPos.y);
+                    newPos.x = std::min(CANVAS_POS.x + CANVAS_SIZE.x - selectedNode->GetSize().x, newPos.x);
+                    newPos.y = std::min(CANVAS_POS.y + CANVAS_SIZE.y - selectedNode->GetSize().y, newPos.y);
+                    newPos = (newPos - CANVAS_POS + ImVec2{ImGui::GetScrollX(), ImGui::GetScrollY()}) / nodeEditor->GetScale();
+                    selectedNode->SetGridPos(newPos);
+                }
+            }
+            else
+            {
+                nodeEditor->SetDragging(false);
+            }
             for (const auto& [key, trigger] : nodeEditor->GetCurrentFsm()->GetTriggers())
             {
                 trigger->DrawNode();
@@ -596,16 +696,31 @@ namespace LuaFsm
                 {
                     if (const auto node = trigger->GetCurrentState()->GetNode())
                     {
-                        if (!node->IsInvisible() && !trigger->GetNode()->IsInvisible())
-                            NodeEditor::DrawConnection(node, trigger->GetNode());
+                        NodeEditor::DrawConnection(node, trigger->GetNode());
                     }
                 }
                 if (trigger->GetNextState())
                 {
                     if (const auto nextNode = trigger->GetNextState()->GetNode())
                     {
-                        if (!nextNode->IsInvisible() && !trigger->GetNode()->IsInvisible())
                             NodeEditor::DrawConnection(trigger->GetNode(), nextNode);
+                    }
+                }
+            }
+            if (nodeEditor->GetCopiedNode() && ImGui::IsKeyPressed(ImGuiKey_V) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+            {
+                CURSOR_POS = ImGui::GetMousePos() - CANVAS_POS + ImVec2{ImGui::GetScrollX(), ImGui::GetScrollY()} / nodeEditor->GetScale();
+                switch (nodeEditor->GetCopiedNode()->GetType())
+                {
+                    case NodeType::State:
+                    {
+                        PASTE_NEW_STATE_AT_CURSOR = true;
+                        break;
+                    }
+                    case NodeType::Transition:
+                    {
+                        PASTE_NEW_TRIGGER_AT_CURSOR = true;
+                        break;
                     }
                 }
             }
@@ -620,17 +735,16 @@ namespace LuaFsm
                 
                 if (const auto otherNode = nodeEditor->GetSelectedNode(); otherNode)
                 {
+                    CURSOR_POS = ImGui::GetMousePos() - CANVAS_POS + ImVec2{ImGui::GetScrollX(), ImGui::GetScrollY()} / nodeEditor->GetScale();
                     switch (otherNode->GetType())
                     {
                         case NodeType::State:
                         {
-                                CURSOR_POS = ImGui::GetMousePos();
                                 ADD_NEW_TRIGGER_AT_CURSOR = true;
                                 break;
                         }
                         case NodeType::Transition:
                         {
-                                CURSOR_POS = ImGui::GetMousePos();
                                 ADD_NEW_STATE_AT_CURSOR = true;
                             break;
                         }
@@ -640,7 +754,10 @@ namespace LuaFsm
             }
             else if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
                 NodeEditor::Get()->SetCreatingLink(false);
-
+            ImGui::PopStyleVar();
+            
+            ImGui::SetWindowFontScale(1.0f);
+            
             if (ADD_NEW_STATE_AT_CURSOR)
             {
                 ImGui::OpenPopup("Add State At Cursor");
@@ -652,6 +769,18 @@ namespace LuaFsm
                 ImGui::OpenPopup("Add Trigger At Cursor");
                 ADD_NEW_TRIGGER_AT_CURSOR = false;
             }
+            
+            if (PASTE_NEW_STATE_AT_CURSOR)
+            {
+                ImGui::OpenPopup("Paste State At Cursor");
+                PASTE_NEW_STATE_AT_CURSOR = false;
+            }
+
+            if (PASTE_NEW_TRIGGER_AT_CURSOR)
+            {
+                ImGui::OpenPopup("Paste Trigger At Cursor");
+                PASTE_NEW_TRIGGER_AT_CURSOR = false;
+            }
 
             if (ImGui::BeginPopup("Add State At Cursor"))
             {
@@ -662,14 +791,17 @@ namespace LuaFsm
                     ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
                     static std::string name;
                     ImGui::InputText("New State Name", &name);
-                    if (!id.empty() && !name.empty() && !NodeEditor::Get()->GetCurrentFsm()->GetState(id) && ImGui::Button("Add State"))
+                    if (!id.empty() && !name.empty()
+                        && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
+                        && !NodeEditor::Get()->GetCurrentFsm()->GetState(id) && ImGui::Button("Add State"))
                     {
                         const auto state = NodeEditor::Get()->GetCurrentFsm()->AddState(id);
-                        state->GetNode()->SetTargetPosition(Math::SubtractVec2(CURSOR_POS, {25, 50}));
+                        state->GetNode()->SetGridPos(CURSOR_POS);
                         state->SetName(name);
                         const auto trigger = NodeEditor::Get()->GetCurrentFsm()->GetTrigger(fromNode->GetId());
                         trigger->SetNextState(state->GetId());
                         ImGui::SetClipboardText(state->GetLuaCode().c_str());
+                        state->AppendToFile();
                         ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", id.c_str()});
                         name = "";
                         id = "";
@@ -696,6 +828,98 @@ namespace LuaFsm
                 ImGui::EndPopup();
             }
 
+            if (ImGui::BeginPopup("Paste State At Cursor"))
+            {
+                if (const auto copiedNode = NodeEditor::Get()->GetCopiedNode();
+                    copiedNode && copiedNode->GetType() == NodeType::State
+                    && NodeEditor::Get()->GetCurrentFsm()->GetState(copiedNode->GetId())
+                    )
+                {
+                    static std::string id;
+                    ImGui::InputText("New State ID", &id);
+                    ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
+                    if (!id.empty()
+                        && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
+                        && !NodeEditor::Get()->GetCurrentFsm()->GetState(id)
+                        && ImGui::Button("Add State"))
+                    {
+                        const auto originalState = NodeEditor::Get()->GetCurrentFsm()->GetState(copiedNode->GetId());
+                        const auto state = NodeEditor::Get()->GetCurrentFsm()->AddState(id);
+                        state->SetName(originalState->GetName());
+                        state->SetOnEnter(originalState->GetOnEnter());
+                        state->SetOnUpdate(originalState->GetOnUpdate());
+                        state->SetOnExit(originalState->GetOnExit());
+                        state->SetDescription(originalState->GetDescription());
+                        state->GetNode()->SetGridPos(CURSOR_POS);
+                        ImGui::SetClipboardText(state->GetLuaCode().c_str());
+                        state->AppendToFile();
+                        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", id.c_str()});
+                        id = "";
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else if (id.empty())
+                    {
+                        ImGui::Text("ID can not be empty.");
+                    }
+                    else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id) || NodeEditor::Get()->GetCurrentFsm()->GetState(id))
+                    {
+                        ImGui::Text("State with ID already exists.");
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel"))
+                    {
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+                ImGui::EndPopup();
+            }
+
+            if (ImGui::BeginPopup("Paste Trigger At Cursor"))
+            {
+                if (const auto copiedNode = NodeEditor::Get()->GetCopiedNode();
+                    copiedNode && copiedNode->GetType() == NodeType::Transition
+                    && NodeEditor::Get()->GetCurrentFsm()->GetTrigger(copiedNode->GetId())
+                    )
+                {
+                    static std::string id;
+                    ImGui::InputText("New Trigger ID", &id);
+                    ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
+                    if (!id.empty()
+                        && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
+                        && !NodeEditor::Get()->GetCurrentFsm()->GetState(id)
+                        && ImGui::Button("Add Condition"))
+                    {
+                        const auto originalCondition = NodeEditor::Get()->GetCurrentFsm()->GetTrigger(copiedNode->GetId());
+                        const auto condition = std::make_shared<FsmTrigger>(id);
+                        NodeEditor::Get()->GetCurrentFsm()->AddTrigger(condition);
+                        condition->SetName(originalCondition->GetName());
+                        condition->SetDescription(originalCondition->GetDescription());
+                        condition->SetCondition(originalCondition->GetCondition());
+                        condition->SetAction(originalCondition->GetAction());
+                        condition->GetNode()->SetGridPos(CURSOR_POS);
+                        ImGui::SetClipboardText(condition->GetLuaCode().c_str());
+                        condition->AppendToFile();
+                        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", id.c_str()});
+                        id = "";
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else if (id.empty())
+                    {
+                        ImGui::Text("ID can not be empty.");
+                    }
+                    else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id) || NodeEditor::Get()->GetCurrentFsm()->GetState(id))
+                    {
+                        ImGui::Text("Condition with ID already exists.");
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Cancel"))
+                    {
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+                ImGui::EndPopup();
+            }
+
             if (ImGui::BeginPopup("Add Trigger At Cursor"))
             {
                 if (const auto fromNode = NodeEditor::Get()->GetSelectedNode(); fromNode && fromNode->GetType() == NodeType::State)
@@ -705,15 +929,19 @@ namespace LuaFsm
                     ImGui::SetItemTooltip("Used for internal identification and must be unique. Be careful with choosing if you change it later you will need to refactor your lua code to maintain loading ability.");
                     static std::string name;
                     ImGui::InputText("New Trigger Name", &name);
-                    if (!id.empty() && !name.empty() && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id) && ImGui::Button("Add Trigger"))
+                    if (!id.empty() && !name.empty()
+                        && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
+                        && !NodeEditor::Get()->GetCurrentFsm()->GetState(id)
+                        && ImGui::Button("Add Trigger"))
                     {
                         const auto state = NodeEditor::Get()->GetCurrentFsm()->GetState(fromNode->GetId());
                         const auto trigger = state->AddTrigger(id);
                         nodeEditor->GetCurrentFsm()->AddTrigger(trigger);
-                        trigger->GetNode()->SetTargetPosition(Math::SubtractVec2(CURSOR_POS, {25, 50}));
+                        trigger->GetNode()->SetGridPos(CURSOR_POS);
                         ImGui::SetClipboardText(trigger->GetLuaCode().c_str());
                         ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Condition added: %s, code copied to clipboard", id.c_str()});
                         trigger->SetName(name);
+                        trigger->AppendToFile();
                         name = "";
                         id = "";
                         ImGui::CloseCurrentPopup();
@@ -741,6 +969,11 @@ namespace LuaFsm
             ImGui::End();
         }
         ImGui::PopFont();
+    }
+
+    void Window::Properties()
+    {
+        const auto nodeEditor = NodeEditor::Get();
 
         // Code editor window
         ImGui::Begin("Properties", nullptr, ImGuiWindowFlags_NoBringToFrontOnFocus
@@ -750,13 +983,13 @@ namespace LuaFsm
             {
                 switch (node->GetType())
                 {
-                    case NodeType::State:
+                case NodeType::State:
                     {
                         if (const auto state = nodeEditor->GetCurrentFsm()->GetState(node->GetId()))
                             state->DrawProperties();
                         break;
                     }
-                    case NodeType::Transition:
+                case NodeType::Transition:
                     {
                         if (const auto trigger = nodeEditor->GetCurrentFsm()->GetTrigger(node->GetId()))
                             trigger->DrawProperties();
@@ -770,8 +1003,6 @@ namespace LuaFsm
                 nodeEditor->GetCurrentFsm()->DrawProperties();
             ImGui::End();
         }
-
-        //ImGui::PopStyleColor();
     }
 
     void Window::DrawTextEditor(TextEditor& txtEditor, std::string& oldText)
@@ -783,32 +1014,6 @@ namespace LuaFsm
         txtEditor.Render("Code");
         if (txtEditor.IsTextChanged())
             oldText = txtEditor.GetText();
-    }
-    
-    void Window::EndImGui() const
-    {
-        // Rendering
-        ImGui::PopFont();
-        constexpr auto clearColor = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-        const ImGuiIO& io = ImGui::GetIO(); (void)io;
-        ImGui::Render();
-        GLFWwindow* window = glfwGetCurrentContext();
-        int displayW, displayH;
-        glfwGetFramebufferSize(window, &displayW, &displayH);
-        glViewport(0, 0, displayW, displayH);
-        glClearColor(clearColor.x * clearColor.w, clearColor.y * clearColor.w, clearColor.z * clearColor.w, clearColor.w);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            GLFWwindow* backupCurrentContext = glfwGetCurrentContext();
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-            glfwMakeContextCurrent(backupCurrentContext);
-        }
-        glfwSwapBuffers(window);
-        if (SHUTDOWN)
-            Shutdown();
     }
 
     void Window::InitThemes()
@@ -907,6 +1112,15 @@ namespace LuaFsm
         OnImGuiRender();
         EndImGui();
     }
+    
+    void Window::TrimTrailingNewlines(std::string& str)
+    {
+        while (!str.empty() && (str.back() == '\n' || str.back() == '\r'))
+        {
+            str.pop_back();
+        }
+    }
+
 
     
 }

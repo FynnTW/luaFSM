@@ -66,7 +66,9 @@ namespace LuaFsm
         code += fmt::format("local {0} = FSM_CONDITION:new({{}})\n", m_Id);
         code += fmt::format("{0}.name = \"{1}\"\n", m_Id, m_Name);
         code += fmt::format("{0}.description = \"{1}\"\n", m_Id, m_Description);
-        code += fmt::format("{0}.editorPos = {{{1}, {2}}}\n", m_Id, m_Node.GetTargetPosition().x, m_Node.GetTargetPosition().y);
+        code += fmt::format("{0}.editorPos = {{{1}, {2}}}\n", m_Id, m_Node.GetGridPos().x, m_Node.GetGridPos().y);
+        code += fmt::format("{0}.inLineCurve = {1}\n", m_Id, m_Node.GetInArrowCurve());
+        code += fmt::format("{0}.outLineCurve = {1}\n", m_Id, m_Node.GetOutArrowCurve());
         code += fmt::format("{0}.currentStateId = \"{1}\"\n", m_Id, m_CurrentStateId);
         code += fmt::format("{0}.nextStateId = \"{1}\"\n", m_Id, m_NextStateId);
         code += fmt::format("{0}.priority = {1}\n", m_Id, m_Priority);
@@ -88,16 +90,28 @@ namespace LuaFsm
         return code;
     }
 
-    void FsmTrigger::UpdateFileContents(std::string& code)
+    void FsmTrigger::UpdateFileContents(std::string& code, const std::string& oldId)
     {
         UpdateEditors();
-        std::regex regex = FsmRegex::ClassStringRegex(m_Id, "name");
+        std::regex regex = FsmRegex::IdRegexClass("FSM_CONDITION", oldId);
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("---@FSM_CONDITION {}", m_Id));
+        else
+        {
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "No Entry for condition %s found in file", oldId.c_str()});
+            return;
+        }
+        regex = FsmRegex::ClassStringRegex(oldId, "name");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.name = \"{1}\"", m_Id, m_Name));
-        regex = FsmRegex::ClassStringRegex(m_Id, "description");
+        else if (!m_Name.empty())
+                ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s name entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassStringRegex(oldId, "description");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.description = \"{1}\"", m_Id, m_Description));
-        regex = FsmRegex::ClassTableRegex(m_Id, "editorPos");
+        else if (!m_Description.empty())
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s description entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassTableRegex(oldId, "editorPos");
         if (std::smatch match; std::regex_search(code, match, regex))
         {
             std::string tableContent = match[1].str();
@@ -112,35 +126,63 @@ namespace LuaFsm
                 ImVec2 position;
                 position.x = elements[0];
                 position.y = elements[1];
-                position = GetNode()->GetTargetPosition();
+                position = GetNode()->GetGridPos();
                 code = std::regex_replace(code, regex, fmt::format("{0}.editorPos = {{{1}, {2}}}", m_Id, position.x, position.y));
             }
         }
-        regex = FsmRegex::ClassStringRegex(m_Id, "currentStateId");
+        else
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s position entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassStringRegex(oldId, "currentStateId");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.currentStateId = \"{1}\"", m_Id, m_CurrentStateId));
-        regex = FsmRegex::ClassStringRegex(m_Id, "nextStateId");
+        else if (!m_CurrentStateId.empty())
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s current state entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassStringRegex(oldId, "nextStateId");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.nextStateId = \"{1}\"", m_Id, m_NextStateId));
-        regex = FsmRegex::ClassIntegerRegex(m_Id, "priority");
+        else if (!m_NextStateId.empty())
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s next state entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassIntegerRegex(oldId, "priority");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.priority = {1}", m_Id, m_Priority));
-        regex = FsmRegex::FunctionBodyReplace(m_Id, "condition");
+        else if (m_Priority != 0)
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s priority entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassFloatRegex(oldId, "inLineCurve");
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("{0}.inLineCurve = {1}", m_Id, m_Node.GetInArrowCurve()));
+        else if (m_Node.GetInArrowCurve() > 0.0001f || m_Node.GetInArrowCurve() < 0.0001f)
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s inLineCurve entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassFloatRegex(oldId, "outLineCurve");
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("{0}.outLineCurve = {1}", m_Id, m_Node.GetOutArrowCurve()));
+        else if (m_Node.GetOutArrowCurve() > 0.0001f || m_Node.GetOutArrowCurve() < 0.0001f)
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s outLineCurve entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::FunctionBodyReplace(oldId, "condition");
         if (std::smatch match; std::regex_search(code, match, regex))
         {
             std::string func;
             for (const auto& line : m_ConditionEditor.GetTextLines())
                 func += fmt::format("\t{0}\n", line);
             code = std::regex_replace(code, regex, "$1\n" + func + "$3");
+            auto regexString = fmt::format("({0}:condition)", oldId);
+            regex = std::regex(regexString);
+            code = std::regex_replace(code, regex, fmt::format("{0}:condition", m_Id));
         }
-        regex = FsmRegex::FunctionBodyReplace(m_Id, "action");
+        else if (!m_Condition.empty())
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s condition entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::FunctionBodyReplace(oldId, "action");
         if (std::smatch match; std::regex_search(code, match, regex))
         {
             std::string func;
             for (const auto& line : m_ActionEditor.GetTextLines())
                 func += fmt::format("\t{0}\n", line);
             code = std::regex_replace(code, regex, "$1\n" + func + "$3");
+            auto regexString = fmt::format("({0}:action)", oldId);
+            regex = std::regex(regexString);
+            code = std::regex_replace(code, regex, fmt::format("{0}:action", m_Id));
         }
+        else if (!m_Action.empty())
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s action entry not found in file!", m_Id.c_str()});
     }
 
 
@@ -174,6 +216,14 @@ namespace LuaFsm
         if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassIntegerRegex(m_Id, "priority")))
             priority = std::stoi(match[1].str());
         SetPriority(priority);
+        float inLineCurve = 0;
+        if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassFloatRegex(m_Id, "inLineCurve")))
+            inLineCurve = std::stof(match[1].str());
+        m_Node.SetInArrowCurve(inLineCurve);
+        float outLineCurve = 0;
+        if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassFloatRegex(m_Id, "outLineCurve")))
+            outLineCurve = std::stof(match[1].str());
+        m_Node.SetOutArrowCurve(outLineCurve);
         if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassTableRegex(m_Id, "editorPos")))
         {
             std::string tableContent = match[1].str();
@@ -188,7 +238,7 @@ namespace LuaFsm
                 ImVec2 position;
                 position.x = elements[0];
                 position.y = elements[1];
-                GetNode()->SetTargetPosition(position);
+                GetNode()->SetGridPos(position);
             }
         }
         std::string condition = "return false";
@@ -201,6 +251,47 @@ namespace LuaFsm
         SetAction(action);
         UpdateEditors();
     }
+
+    void FsmTrigger::UpdateToFile(const std::string& oldId)
+    {
+        if (!NodeEditor::Get()->GetCurrentFsm())
+            return;
+        const auto filePath = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile();
+        if (filePath.empty())
+            return;
+        auto code = FileReader::ReadAllText(filePath);
+        if (code.empty())
+            return;
+        UpdateFileContents(code, oldId);
+        std::ofstream file(filePath);
+        if (!file.is_open())
+        {
+            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+            return;
+        }
+        file << code;
+        file.close();
+    }
+
+    void FsmTrigger::RefactorId(const std::string& newId)
+    {
+        const auto fsm = NodeEditor::Get()->GetCurrentFsm();
+        const std::string oldId = m_Id;
+        if (!fsm)
+            return;
+        if (fsm->GetTrigger(newId) || fsm->GetState(newId))
+        {
+            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Condition with id %s already exists!", newId.c_str()});
+            return;
+        }
+        SetId(newId);
+        if (fsm->GetLinkedFile().empty())
+            return;
+        UpdateToFile(oldId);
+        fsm->UpdateToFile();
+    }
+
+    bool SET_NEW_COND_ID = false;
 
     FsmState* FsmTrigger::GetCurrentState()
     {
@@ -241,6 +332,8 @@ namespace LuaFsm
             return;
         if (const auto state = fsm->GetState(stateId); state)
             m_NextState = state.get();
+        else
+            m_NextState = nullptr;
     }
 
     void FsmTrigger::SetCurrentState(const std::string& stateId)
@@ -255,11 +348,13 @@ namespace LuaFsm
             if (!state->GetTriggers().contains(m_Id))
                 state->AddTrigger(fsm->GetTrigger(m_Id));
         }
+        else
+            m_CurrentState = nullptr;
     }
 
     VisualNode* FsmTrigger::DrawNode()
     {
-        return m_Node.Draw(this);
+        return m_Node.Draw2(this);
     }
 
     void FsmTrigger::SetId(const std::string& id)
@@ -312,6 +407,14 @@ namespace LuaFsm
         {
             if (ImGui::BeginTabItem(MakeIdString("Trigger Properties").c_str()))
             {
+                /*
+                ImGui::Text("Position: %f, %f", m_Node.GetTargetPosition().x, m_Node.GetTargetPosition().y);
+                ImGui::Text("DrawPos: %f, %f", m_Node.GetLastDrawPos().x, m_Node.GetLastDrawPos().y);
+                */
+                ImGui::Text("ID: %s", GetId().c_str());
+                ImGui::SameLine();
+                if (ImGui::Button(MakeIdString("Refactor ID").c_str()))
+                    SET_NEW_COND_ID = true;
                 ImGui::Text("Name");
                 std::string name = GetName();
                 std::string nameLabel = "##Name" + GetId();
@@ -327,13 +430,25 @@ namespace LuaFsm
                 ImGui::SetNextItemWidth(150.f);
                 ImGui::InputInt(MakeIdString("Priority").c_str(), &m_Priority);
                 ImGui::Separator();
+                float inCurve = m_Node.GetInArrowCurve();
+                ImGui::SliderFloat(MakeIdString("Out line curve").c_str(), &inCurve, -1.0f, 1.0f);
+                m_Node.SetInArrowCurve(inCurve);
+                ImGui::Separator();
+                float outCurve = m_Node.GetOutArrowCurve();
+                ImGui::SliderFloat(MakeIdString("In line curve").c_str(), &outCurve, -1.0f, 1.0f);
+                m_Node.SetOutArrowCurve(outCurve);
+                ImGui::Separator();
                 ImGui::Text("Current State: ");
                 ImGui::SameLine();
                 if (GetCurrentState())
                 {
                     ImGui::Selectable(MakeIdString(m_CurrentStateId).c_str(), false);
                     if (ImGui::IsItemClicked())
+                    {
                         NodeEditor::Get()->SetSelectedNode(GetCurrentState()->GetNode());
+                        if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"); canvas && GetCurrentState())
+                            canvas->Scroll = GetCurrentState()->GetNode()->GetGridPos() - NodeEditor::Get()->GetCanvasSize() / 2;
+                    }
                     if (ImGui::IsItemHovered())
                     {
                         GetCurrentState()->GetNode()->HighLight();
@@ -352,7 +467,11 @@ namespace LuaFsm
                 {
                     ImGui::Selectable(MakeIdString(m_NextStateId).c_str(), false);
                     if (ImGui::IsItemClicked())
+                    {
                         NodeEditor::Get()->SetSelectedNode(GetNextState()->GetNode());
+                        if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"); canvas && GetNextState())
+                            canvas->Scroll = GetNextState()->GetNode()->GetGridPos() - NodeEditor::Get()->GetCanvasSize() / 2;
+                    }
                     if (ImGui::IsItemHovered())
                     {
                         GetNextState()->GetNode()->HighLight();
@@ -470,6 +589,7 @@ namespace LuaFsm
                 ImGui::InputText(MakeIdString("name").c_str(), &name);
                 if (!key.empty() && !name.empty() &&
                     !NodeEditor::Get()->GetCurrentFsm()->GetState(key)
+                    && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key)
                     && ImGui::Button(MakeIdString("Add State").c_str()))
                 {
                     auto newState = NodeEditor::Get()->GetCurrentFsm()->AddState(key);
@@ -478,6 +598,7 @@ namespace LuaFsm
                     ADD_CURRENT_STATE = false;
                     ImGui::SetClipboardText(newState->GetLuaCode().c_str());
                     ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", key.c_str()});
+                    newState->AppendToFile();
                     key = "";
                     name = "";
                     ImGui::CloseCurrentPopup();
@@ -494,7 +615,7 @@ namespace LuaFsm
 
         if (ADD_NEXT_STATE)
         {
-            std::string popupId = MakeIdString("Add Current State");
+            std::string popupId = MakeIdString("Add Next State");
             ImGui::OpenPopup(popupId.c_str());
             if (ImGui::BeginPopup(popupId.c_str()))
             {
@@ -503,8 +624,9 @@ namespace LuaFsm
                 static std::string name;
                 ImGui::InputText(MakeIdString("name").c_str(), &name);
                 if (!key.empty() && !name.empty() &&
-                    !NodeEditor::Get()->GetCurrentFsm()->GetState(key) &&
-                    ImGui::Button(MakeIdString("Add State").c_str()))
+                    !NodeEditor::Get()->GetCurrentFsm()->GetState(key)
+                    && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key)
+                    && ImGui::Button(MakeIdString("Add State").c_str()))
                 {
                     ADD_NEXT_STATE = false;
                     auto newState = NodeEditor::Get()->GetCurrentFsm()->AddState(key);
@@ -513,6 +635,7 @@ namespace LuaFsm
                     newState->SetName(name);
                     ImGui::SetClipboardText(newState->GetLuaCode().c_str());
                     ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", key.c_str()});
+                    newState->AppendToFile();
                     key = "";
                     name = "";
                     ImGui::CloseCurrentPopup();
@@ -525,6 +648,54 @@ namespace LuaFsm
                 }
                 ImGui::EndPopup();
             }
+        }
+
+        if (SET_NEW_COND_ID)
+        {
+            std::string popupId = MakeIdString("Refactor ID");
+            ImGui::OpenPopup(popupId.c_str());
+            if (ImGui::BeginPopup(popupId.c_str()))
+            {
+                static std::string newId;
+                ImGui::InputText(MakeIdString("New ID").c_str(), &newId);
+                if (!newId.empty() && ImGui::Button(MakeIdString("Refactor ID").c_str()))
+                {
+                    RefactorId(newId);
+                    SET_NEW_COND_ID = false;
+                    newId = "";
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel"))
+                {
+                    SET_NEW_COND_ID = false;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+        }
+    }
+
+    void FsmTrigger::AppendToFile()
+    {
+        if (const auto fsm = NodeEditor::Get()->GetCurrentFsm(); fsm)
+        {
+            const auto filePath = fsm->GetLinkedFile();
+            if (filePath.empty())
+                return;
+            auto code = FileReader::ReadAllText(filePath);
+            if (code.empty())
+                return;
+            code += "\n\n";
+            code += GetLuaCode();
+            std::ofstream file(filePath);
+            if (!file.is_open())
+            {
+                ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+                return;
+            }
+            file << code;
+            file.close();
         }
     }
 

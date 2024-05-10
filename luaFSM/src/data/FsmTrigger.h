@@ -20,6 +20,8 @@ namespace LuaFsm
         static std::vector<std::shared_ptr<FsmTrigger>> CreateFromFile(const std::string& filePath);
         std::string GetExportLuaCode();
         void UpdateFromFile(const std::string& filePath);
+        void UpdateToFile(const std::string& oldId);
+        void RefactorId(const std::string& newId);
 
         [[nodiscard]] virtual std::string GetId() const override { return m_Id; }
         void virtual SetId(const std::string& id) override;
@@ -49,7 +51,7 @@ namespace LuaFsm
         FsmState* GetNextState();
         [[nodiscard]] const std::string& GetNextStateId() const { return m_NextStateId; }
         void SetNextState(const std::string& stateId);
-        void UpdateFileContents(std::string& code);
+        void UpdateFileContents(std::string& code, const std::string& oldId);
 
         TextEditor* GetConditionEditor() { return &m_ConditionEditor; }
         TextEditor* GetActionEditor() { return &m_ActionEditor; }
@@ -59,7 +61,8 @@ namespace LuaFsm
         [[nodiscard]] ImVec2 GetPosition() { return m_Node.GetPosition(); }
         VisualNode* DrawNode();
         void DrawProperties();
-        
+        void AppendToFile();
+
         static std::shared_ptr<FsmTrigger> Deserialize(const nlohmann::json& json);
 
         nlohmann::json Serialize() const;
