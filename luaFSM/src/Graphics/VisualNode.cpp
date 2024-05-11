@@ -72,12 +72,13 @@ namespace LuaFsm
 
     int WINDOW_COUNT = 0;
     
-    VisualNode* VisualNode::Draw2(const DrawableObject* object)
+    VisualNode* VisualNode::Draw(const DrawableObject* object)
     {
         const auto editor = NodeEditor::Get();
         if (m_WindowLabel == 0)
             m_WindowLabel = ++WINDOW_COUNT;
         const std::string label = "##Window" + std::to_string(m_WindowLabel);
+        ImGui::SetWindowFontScale(editor->GetScale());
         m_Size = InitSizes(object->GetName());
         ImGui::SetCursorPos(m_GridPos * editor->GetScale());
         ImGui::BeginChild(
@@ -94,18 +95,25 @@ namespace LuaFsm
             {
                 drawList->AddEllipseFilled(m_LastPosition,  m_EllipseRadius, GetCurrentColor());
                 if (NodeEditor::Get()->GetCurrentFsm()->GetInitialStateId() == m_Id)
-                    drawList->AddEllipse(m_LastPosition, m_EllipseRadius, IM_COL32(0, 255, 0, 255));
+                    drawList->AddEllipse(m_LastPosition, m_EllipseRadius, IM_COL32(0, 255, 0, 255), 0, 0, 2.f);
+                else if (const auto state = NodeEditor::Get()->GetCurrentFsm()->GetState(m_Id); state && state->IsExitState())
+                    drawList->AddEllipse(m_LastPosition, m_EllipseRadius, IM_COL32(255, 0, 0, 255), 0,0, 2.f);
                 else
-                    drawList->AddEllipse(m_LastPosition, m_EllipseRadius, GetBorderColor());
-                drawList->AddText(GetTextPos(object->GetName().c_str()), IM_COL32_WHITE, object->GetName().c_str());
+                    drawList->AddEllipse(m_LastPosition, m_EllipseRadius, GetBorderColor(), 0,0, 2.f);
+                const auto textColor = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
+                drawList->AddText(GetTextPos(object->GetName().c_str()), textColor, object->GetName().c_str());
             }
             else if (m_Shape == NodeShape::Circle)
             {
                 drawList->AddCircleFilled(m_LastPosition, m_Radius, GetCurrentColor());
-                drawList->AddCircle(m_LastPosition, m_Radius, GetBorderColor());
+                if (NodeEditor::Get()->GetCurrentFsm()->GetInitialStateId() == m_Id)
+                    drawList->AddCircle(m_LastPosition, m_Radius, IM_COL32(0, 255, 0, 255), 0, 2.f);
+                else if (const auto state = NodeEditor::Get()->GetCurrentFsm()->GetState(m_Id); state && state->IsExitState())
+                    drawList->AddCircle(m_LastPosition, m_Radius, IM_COL32(255, 0, 0, 255), 0, 2.f);
+                else
+                    drawList->AddCircle(m_LastPosition, m_Radius, GetBorderColor(), 0, 2.f);
             }
             ImGui::EndChild();
-            ImGui::SetWindowFontScale(editor->GetScale());
             if (m_Type == NodeType::Transition)
             {
                 drawList = ImGui::GetWindowDrawList();
@@ -130,158 +138,8 @@ namespace LuaFsm
 
                 drawList->AddText(position, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]), object->GetName().c_str());
             }
-            ImGui::SetWindowFontScale(1.0f);
         }
-        return this;
-    }
-
-    VisualNode* VisualNode::Draw(const DrawableObject* object)
-    {
-        const auto editor = NodeEditor::Get();
-        const float scale = editor->GetScale();
-        ImGui::SetWindowFontScale(editor->GetScale());
-        ImGui::SetNextWindowSize(InitSizes(object->GetName()), ImGuiCond_Always);
-        if (m_TargetPosition.x < 0)
-            m_TargetPosition = editor->GetNextNodePos(this);
-        const ImVec2 adjustedPos = GetPosition();
-        if (adjustedPos.x < 0)
-        {
-            SetInvisible(true);
-            return nullptr;
-        }
-        //adjustedPos = Math::AddVec2(editor->GetCanvasPos(), adjustedPos);
-        SetInvisible(false);
-        if (!Math::ImVec2Equal(m_LastPosition, adjustedPos))
-            ImGui::SetNextWindowPos(adjustedPos);
-        m_LastPosition = adjustedPos;
-        if (m_WindowLabel == 0)
-            m_WindowLabel = ++WINDOW_COUNT;
-        const std::string label = "##Window" + std::to_string(m_WindowLabel);
-        const ImGuiWindow* existingWindow = ImGui::FindWindowByName(label.c_str());
-        if (const ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"); existingWindow && canvas)
-        {
-            bool needsClampToScreen = false;
-            ImVec2 targetPos = existingWindow->Pos;
-            if (existingWindow->Pos.x < canvas->Pos.x + ImGui::GetWindowContentRegionMin().x)
-            {
-                needsClampToScreen = true;
-                targetPos.x = canvas->Pos.x + ImGui::GetWindowContentRegionMin().x;
-            }
-            else if (existingWindow->Size.x + existingWindow->Pos.x > canvas->Size.x + canvas->Pos.x)
-            {
-                needsClampToScreen = true;
-                targetPos.x = canvas->Pos.x + canvas->Size.x - existingWindow->Size.x;
-            }
-            if (existingWindow->Pos.y < canvas->Pos.y + ImGui::GetWindowContentRegionMin().y)
-            {
-                needsClampToScreen = true;
-                targetPos.y = canvas->Pos.y + ImGui::GetWindowContentRegionMin().y;
-            }
-            else if (existingWindow->Size.y + existingWindow->Pos.y > canvas->Size.y + canvas->Pos.y)
-            {
-                needsClampToScreen = true;
-                targetPos.y = canvas->Pos.y + canvas->Size.y - existingWindow->Size.y;
-            }
-            if (needsClampToScreen)
-                ImGui::SetNextWindowPos(targetPos, ImGuiCond_Always);
-        }
-        ImGui::Begin(label.c_str(), nullptr, NodeEditor::nodeWindowFlags);
-        {
-            ImGui::SetWindowFontScale(editor->GetScale());
-            auto drawList = ImGui::GetWindowDrawList();
-            HandleSelection(editor);
-            ImVec2 right = {};
-            if (m_Shape == NodeShape::Ellipse)
-            {
-                const auto ellipseRadius = Math::MultiplyVec2(m_EllipseRadius, scale);
-                drawList->AddEllipseFilled(GetDrawPos(),  m_EllipseRadius, GetCurrentColor());
-                if (NodeEditor::Get()->GetCurrentFsm()->GetInitialStateId() == m_Id)
-                    drawList->AddEllipse(GetDrawPos(), m_EllipseRadius, IM_COL32(0, 255, 0, 255));
-                else
-                    drawList->AddEllipse(GetDrawPos(), m_EllipseRadius, GetBorderColor());
-                drawList->AddText(GetTextPos(object->GetName().c_str()), IM_COL32_WHITE, object->GetName().c_str());
-            }
-            else if (m_Shape == NodeShape::Diamond)
-            {
-                const auto center = GetDrawPos();
-                const float width = GetSize().x;
-                const float height = GetSize().y;
-                const auto top = ImVec2(center.x, center.y - height / 2 + 3.0f);
-                const auto bottom = ImVec2(center.x, center.y + height / 2 - 3.0f);
-                const auto left = ImVec2(center.x - width / 2 + 3.0f, center.y);
-                right = ImVec2(center.x + width / 2 - 3.0f, center.y);
-                drawList->AddQuadFilled(left, top, right, bottom, GetCurrentColor());
-                drawList->AddQuad(left, top, right, bottom, GetBorderColor());
-            }
-            else if (m_Shape == NodeShape::Circle)
-            {
-                const auto radius = m_Radius * scale;
-                drawList->AddCircleFilled(GetDrawPos(), m_Radius, GetCurrentColor());
-                drawList->AddCircle(GetDrawPos(), m_Radius, GetBorderColor());
-            }
-            const auto windowPos = ImGui::GetWindowPos();
-            auto movedAmount =
-                Math::SubtractVec2(windowPos, Math::AddVec2(adjustedPos, {ImGui::GetScrollX() / 5, ImGui::GetScrollY() / 5}));
-            const auto invertedScale = ImVec2(1.0f / NodeEditor::Get()->GetScale(), 1.0f / NodeEditor::Get()->GetScale());
-            movedAmount = Math::MultiplyVec2(movedAmount, invertedScale);
-            auto newPos = Math::AddVec2(GetTargetPosition(), movedAmount);
-            newPos.x = std::max(editor->GetCanvasPos().x + 1, newPos.x);
-            newPos.y = std::max(editor->GetCanvasPos().y + 1, newPos.y);
-            SetTargetPosition(newPos);
-            ImGui::SetWindowFontScale(1.0f);
-            ImGui::End();
-            ImGui::SetWindowFontScale(editor->GetScale());
-            if (m_Type == NodeType::Transition)
-            {
-                drawList = ImGui::GetWindowDrawList();
-                auto rightBound = Math::AddVec2X(GetLastDrawPos(), m_Radius);
-                auto leftBound = Math::SubtractVec2X(GetLastDrawPos(), m_Radius);
-                auto trigger = editor->GetCurrentFsm()->GetTrigger(m_Id);
-                ImVec2 currentStateArrowPos = {};
-                ImVec2 nextStateArrowPos = {};
-
-                if (trigger->GetCurrentState())
-                    currentStateArrowPos = GetFromPoint(trigger->GetCurrentState()->GetNode());
-
-                if (trigger->GetNextState())
-                    nextStateArrowPos = GetFromPoint(trigger->GetNextState()->GetNode());
-
-                auto textSize = ImGui::CalcTextSize(object->GetName().c_str());
-                ImVec2 position = {};
-    
-                // Determine arrow directions and adjust text position
-                bool arrowFromLeft = (currentStateArrowPos.x < GetLastDrawPos().x
-                    && abs(currentStateArrowPos.y - GetLastDrawPos().y) < m_Radius * 0.5)
-                || (nextStateArrowPos.x < GetLastDrawPos().x
-                    && abs(nextStateArrowPos.y - GetLastDrawPos().y) < m_Radius * 0.5);
-                bool arrowFromRight = (currentStateArrowPos.x > GetLastDrawPos().x
-                    && abs(currentStateArrowPos.y - GetLastDrawPos().y) < m_Radius * 0.5)
-                || (nextStateArrowPos.x > GetLastDrawPos().x
-                    && abs(nextStateArrowPos.y - GetLastDrawPos().y) < m_Radius * 0.5);
-
-                if (arrowFromRight)
-                {
-                    // Move text to the left
-                    auto xPos = Math::SubtractVec2X(leftBound, 3.0f + textSize.x);
-                    position = Math::SubtractVec2Y(xPos, textSize.y * 0.5f);
-                }
-                else if (arrowFromLeft)
-                {
-                    // Move text to the right
-                    auto xPos = Math::AddVec2X(rightBound, 3.0f);
-                    position = Math::SubtractVec2Y(xPos, textSize.y * 0.5f);
-                }
-                else
-                {
-                    // Default position
-                    auto xPos = Math::AddVec2X(rightBound, 3.0f);
-                    position = Math::SubtractVec2Y(xPos, textSize.y * 0.5f);
-                }
-
-                drawList->AddText(position, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]), object->GetName().c_str());
-            }
-            ImGui::SetWindowFontScale(1.0f);
-        }
+        ImGui::SetWindowFontScale(1.0f);
         return this;
     }
 
@@ -349,7 +207,9 @@ namespace LuaFsm
             if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
                 editor->SetCreatingLink(false);
             if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && IsSelected())
+            {
                 editor->SetDragging(true);
+            }
             if (ImGui::IsKeyPressed(ImGuiKey_C)
                 && ImGui::IsKeyDown(ImGuiKey_LeftCtrl)
                 && IsSelected())

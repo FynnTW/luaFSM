@@ -319,6 +319,7 @@ namespace LuaFsm
             return;
         }
         file << code;
+        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "File content updated at: %s", filePath.c_str()});
         file.close();
     }
 
@@ -337,7 +338,7 @@ namespace LuaFsm
         if (fsm->GetLinkedFile().empty())
             return;
         UpdateToFile(oldId);
-        fsm->UpdateToFile();
+        fsm->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
     }
 
     bool SET_NEW_COND_ID = false;
@@ -403,7 +404,7 @@ namespace LuaFsm
 
     VisualNode* FsmTrigger::DrawNode()
     {
-        return m_Node.Draw2(this);
+        return m_Node.Draw(this);
     }
 
     void FsmTrigger::SetId(const std::string& id)
@@ -437,13 +438,13 @@ namespace LuaFsm
 
     void FsmTrigger::DrawProperties()
     {
-        if (ImGui::Button(MakeIdString("Preview Lua Code").c_str()) || m_LuaCodeEditor.GetText().empty())
-            m_LuaCodeEditor.SetText(GetLuaCode());
-        ImGui::SameLine();
         if (auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty())
         {
-            if (ImGui::Button(MakeIdString("Update From File").c_str()))
+            if (ImGui::Button(MakeIdString("Load from file").c_str()))
                 UpdateFromFile(linkedFile);
+            ImGui::SameLine();
+            if (ImGui::Button(MakeIdString("Save to file").c_str()))
+                UpdateToFile(m_Id);
             ImGui::SameLine();
         }
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
@@ -456,10 +457,11 @@ namespace LuaFsm
         {
             if (ImGui::BeginTabItem(MakeIdString("Trigger Properties").c_str()))
             {
-                
+                /*
                 ImGui::Text("inMidPoint: %f, %f", m_Node.GetInLineMidPoint().x, m_Node.GetInLineMidPoint().y);
                 ImGui::Text("outMidPoint: %f, %f", m_Node.GetOutLineMidPoint().x, m_Node.GetOutLineMidPoint().y);
                 ImGui::Text("mousePos: %f, %f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
+                */
                 ImGui::Text("ID: %s", GetId().c_str());
                 ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Refactor ID").c_str()))
@@ -479,12 +481,14 @@ namespace LuaFsm
                 ImGui::SetNextItemWidth(150.f);
                 ImGui::InputInt(MakeIdString("Priority").c_str(), &m_Priority);
                 ImGui::Separator();
+                ImGui::SetNextItemWidth(100.f);
                 float inCurve = m_Node.GetInArrowCurve();
-                ImGui::SliderFloat(MakeIdString("In line curve").c_str(), &inCurve, -1.0f, 1.0f);
+                ImGui::SliderFloat(MakeIdString("In curve").c_str(), &inCurve, -1.0f, 1.0f);
                 m_Node.SetInArrowCurve(inCurve);
-                ImGui::Separator();
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(100.f);
                 float outCurve = m_Node.GetOutArrowCurve();
-                ImGui::SliderFloat(MakeIdString("Out line curve").c_str(), &outCurve, -1.0f, 1.0f);
+                ImGui::SliderFloat(MakeIdString("Out curve").c_str(), &outCurve, -1.0f, 1.0f);
                 m_Node.SetOutArrowCurve(outCurve);
                 ImGui::Separator();
                 auto color = m_Node.GetColor();
@@ -559,6 +563,9 @@ namespace LuaFsm
             
             if (ImGui::BeginTabItem(MakeIdString("Lua Code").c_str()))
             {
+                if (ImGui::Button(MakeIdString("Regenerate Code").c_str()) || m_LuaCodeEditor.GetText().empty())
+                    m_LuaCodeEditor.SetText(GetLuaCode());
+                ImGui::Separator();
                 m_LuaCodeEditor.Render("Lua Code");
                 ImGui::EndTabItem();
             }
@@ -574,6 +581,35 @@ namespace LuaFsm
                 if (ImGui::Button(MakeIdString("Are you sure?").c_str()))
                 {
                     NodeEditor::Get()->GetCurrentFsm()->RemoveTrigger(GetId());
+                    std::string filePath = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile();
+                    if (filePath.empty())
+                    {
+                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+                        ImGui::CloseCurrentPopup();
+                        ImGui::EndPopup();
+                        return;
+                    }
+                    std::string code = FileReader::ReadAllText(filePath);
+                    if (code.empty())
+                    {
+                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+                        ImGui::CloseCurrentPopup();
+                        ImGui::EndPopup();
+                        return;
+                    }
+                    std::regex regex = FsmRegex::IdRegexClassFull("FSM_CONDITION", m_Id);
+                    if (std::smatch match; std::regex_search(code, match, regex))
+                        code = std::regex_replace(code, regex, "");
+                    std::ofstream file(filePath);
+                    if (!file.is_open())
+                    {
+                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+                        ImGui::CloseCurrentPopup();
+                        ImGui::EndPopup();
+                        return;
+                    }
+                    file << code;
+                    file.close();
                     DELETE_TRIGGER = false;
                     ImGui::CloseCurrentPopup();
                 }

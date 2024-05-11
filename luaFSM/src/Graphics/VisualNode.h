@@ -53,7 +53,6 @@ namespace LuaFsm
     {
     public:
         [[nodiscard]] ImVec2 GetPosition();
-        VisualNode* Draw2(const DrawableObject* object);
         VisualNode* Draw(const DrawableObject* object);
         [[nodiscard]] ImVec2 GetTargetPosition() const { return m_TargetPosition; }
         void SetTargetPosition(const ImVec2& targetPosition) { m_TargetPosition = targetPosition; }

@@ -95,13 +95,11 @@ namespace LuaFsm
             return state.get();
         return nullptr;
     }
+
+    bool SET_NEW_FSM_ID = false;
     
     void Fsm::DrawProperties()
     {
-        if (ImGui::Button("Generate code"))
-        {
-            m_LuaCodeEditor.SetText(GetLuaCode());
-        }
         if (const auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty())
         {
             ImGui::SameLine();
@@ -109,12 +107,16 @@ namespace LuaFsm
                 UpdateFromFile(linkedFile);
             ImGui::SameLine();
             if (ImGui::Button("Save to file"))
-                UpdateToFile();
+                UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
         }
         if (ImGui::BeginTabBar("FSM Properties"))
         {
             if (ImGui::BeginTabItem("FSM Properties"))
             {
+                ImGui::Text("ID: %s", GetId().c_str());
+                ImGui::SameLine();
+                if (ImGui::Button("Refactor ID"))
+                    SET_NEW_FSM_ID = true;
                 ImGui::InputText("Name", &m_Name);
                 ImGui::Separator();
                 ImGui::Text("Initial State: ");
@@ -144,12 +146,66 @@ namespace LuaFsm
                     ImGui::Text("Create a lua file to link it!");
                 ImGui::Separator();
                 m_LuaCodeEditor.SetPalette(Window::GetPalette());
+                if (ImGui::Button("Regenerate code"))
+                    m_LuaCodeEditor.SetText(GetLuaCode());
+                ImGui::Separator();
                 m_LuaCodeEditor.Render("Lua Code");
                 ImGui::EndTabItem();
             }
             
             ImGui::EndTabBar();
         }
+
+        if (SET_NEW_FSM_ID)
+        {
+            ImGui::OpenPopup("Refactor ID");
+            if (ImGui::BeginPopupModal("Refactor ID", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                ImGui::Text("Enter new ID for FSM: ");
+                static std::string newId;
+                ImGui::InputText("##newId", &newId);
+                if (const auto invalid = std::regex_search(newId, FsmRegex::InvalidIdRegex());
+                    !invalid && !newId.empty()
+                    && !GetTrigger(newId)
+                    && !GetState(newId)
+                    && ImGui::Button("Refactor"))
+                {
+                    RefactorId(newId);
+                    newId = "";
+                    SET_NEW_FSM_ID = false;
+                    ImGui::CloseCurrentPopup();
+                }
+                else if (invalid)
+                    ImGui::Text("Invalid ID");
+                else if (newId.empty())
+                    ImGui::Text("ID can't be empty");
+                else if (GetTrigger(newId))
+                    ImGui::Text("Trigger with this ID already exists");
+                else if (GetState(newId))
+                    ImGui::Text("State with this ID already exists");
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel"))
+                {
+                    SET_NEW_FSM_ID = false;
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+        }
+    }
+
+    void Fsm::RefactorId(const std::string& newId)
+    {
+        const std::string oldId = m_Id;
+        if (GetTrigger(newId) || GetState(newId))
+        {
+            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "State with id %s already exists!", newId.c_str()});
+            return;
+        }
+        SetId(newId);
+        if (GetLinkedFile().empty())
+            return;
+        UpdateToFile(oldId);
     }
     
     nlohmann::json Fsm::Serialize() const
@@ -193,17 +249,15 @@ namespace LuaFsm
         return fsm;
     }
 
-    void Fsm::UpdateToFile()
+    void Fsm::UpdateToFile(const std::string& oldId)
     {
-        if (!NodeEditor::Get()->GetCurrentFsm())
-            return;
-        const auto filePath = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile();
+        const auto filePath = GetLinkedFile();
         if (filePath.empty())
             return;
         auto code = FileReader::ReadAllText(filePath);
         if (code.empty())
             return;
-        UpdateFileContents(code);
+        UpdateFileContents(code, oldId);
         std::ofstream file(filePath);
         if (!file.is_open())
         {
@@ -216,14 +270,14 @@ namespace LuaFsm
         UpdateEditors();
     }
     
-    void Fsm::UpdateFileContents(std::string& code)
+    void Fsm::UpdateFileContents(std::string& code, const std::string& oldId)
     {
-        std::regex regex = FsmRegex::ClassStringRegex(m_Id, "name");
+        std::regex regex = FsmRegex::ClassStringRegex(oldId, "name");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.name = \"{1}\"", m_Id, m_Name));
         else if (!m_Name.empty())
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm name entry not found in file!"});
-        regex = FsmRegex::ClassStringRegex(m_Id, "initialStateId");
+        regex = FsmRegex::ClassStringRegex(oldId, "initialStateId");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.initialStateId = \"{1}\"", m_Id, m_InitialStateId));
         else if (!m_InitialStateId.empty())

@@ -177,6 +177,10 @@ namespace LuaFsm
         if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassStringRegex(m_Id, "description")))
             description = match[1].str();
         SetDescription(description);
+        bool isExitState = false;
+        if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassBoolRegex(m_Id, "isExitState")))
+            isExitState = match[1].str() == "true";
+        SetExitState(isExitState);
         if (std::smatch match; std::regex_search(code, match, FsmRegex::ClassTableRegex(m_Id, "editorPos")))
         {
             std::string tableContent = match[1].str();
@@ -271,6 +275,14 @@ namespace LuaFsm
             code = std::regex_replace(code, regex, fmt::format("{0}.description = \"{1}\"", m_Id, m_Description));
         else if (!m_Description.empty())
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s description entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassBoolRegex(oldId, "isExitState");
+        if (std::smatch match; std::regex_search(code, match, regex))
+        {
+            std::string isExitState = m_IsExitState ? "true" : "false";
+            code = std::regex_replace(code, regex, fmt::format("{0}.isExitState = {1}", m_Id, isExitState));
+        }
+        else if (m_IsExitState)
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s isExitState entry not found in file!", m_Id.c_str()});
         regex = FsmRegex::ClassTableRegex(oldId, "editorPos");
         if (std::smatch match; std::regex_search(code, match, regex))
         {
@@ -369,25 +381,22 @@ namespace LuaFsm
         if (fsm->GetLinkedFile().empty())
             return;
         UpdateToFile(oldId);
-        fsm->UpdateToFile();
+        fsm->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
     }
 
     bool SET_NEW_ID = false;
     
     void FsmState::DrawProperties()
     {
-        if (ImGui::Button(MakeIdString("Preview Lua Code").c_str()) || m_LuaCodeEditor.GetText().empty())
-            m_LuaCodeEditor.SetText(GetLuaCode());
-        ImGui::SameLine();
-        if (const auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty()
-            && ImGui::Button(MakeIdString("Refresh From File").c_str()))
+        if (const auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty())
         {
-            UpdateFromFile(linkedFile);
+            if (ImGui::Button(MakeIdString("Load from file").c_str()))
+                UpdateFromFile(linkedFile);
+            ImGui::SameLine();
+            if (ImGui::Button(MakeIdString("Save to file").c_str()))
+                UpdateToFile(m_Id);
+            ImGui::SameLine();
         }
-        ImGui::SameLine();
-        if (ImGui::Button(MakeIdString("Set as initial").c_str()))
-            NodeEditor::Get()->GetCurrentFsm()->SetInitialState(GetId());
-        ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
         if (ImGui::Button(MakeIdString("Delete State").c_str()))
             DELETE_STATE = true;
@@ -398,10 +407,6 @@ namespace LuaFsm
         {
             if (ImGui::BeginTabItem(MakeIdString("State Properties").c_str()))
             {
-                /*
-                ImGui::Text("Position: %f, %f", m_Node.GetGridPos().x, m_Node.GetGridPos().y);
-                ImGui::Text("DrawPos: %f, %f", m_Node.GetLastDrawPos().x, m_Node.GetLastDrawPos().y);
-                */
                 ImGui::Text("ID: %s", GetId().c_str());
                 ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Refactor ID").c_str()))
@@ -419,6 +424,17 @@ namespace LuaFsm
                 ImGui::InputTextMultiline(descriptionLabel.c_str(), &description, {ImGui::GetContentRegionAvail().x, 100});
                  SetDescription(description);
                 ImGui::Separator();
+                ImGui::Checkbox(MakeIdString("Is Exit State").c_str(), &m_IsExitState);
+                ImGui::Separator();
+                bool isInitial = NodeEditor::Get()->GetCurrentFsm()->GetInitialStateId() == GetId();
+                if (ImGui::Checkbox(MakeIdString("Is Initial State").c_str(), &isInitial))
+                {
+                    if (isInitial)
+                        NodeEditor::Get()->GetCurrentFsm()->SetInitialState(GetId());
+                    else if (NodeEditor::Get()->GetCurrentFsm()->GetInitialStateId() == GetId())
+                        NodeEditor::Get()->GetCurrentFsm()->SetInitialState("");
+                }
+                ImGui::Separator();
                 auto color = m_Node.GetColor();
                 ImGui::ColorEdit4("Node Color", reinterpret_cast<float*>(&color));
                 m_Node.SetColor(color);
@@ -426,30 +442,38 @@ namespace LuaFsm
                 if (m_Node.IsSelected())
                     m_Node.HighLightSelected();
                 ImGui::Separator();
-                ImGui::Text("Triggers");
-                ImGui::SameLine();
-                if (ImGui::Button(MakeIdString("Add Trigger").c_str()))
-                    IS_ADD_TRIGGER_OPEN = true;
-                if (ImGui::BeginListBox(MakeIdString("Triggers").c_str(),{300, 75 }))
+                if (!IsExitState())
+                {
+                    ImGui::Text("Triggers");
+                    ImGui::SameLine();
+                    if (ImGui::Button(MakeIdString("Add Trigger").c_str()))
+                        IS_ADD_TRIGGER_OPEN = true;
+                    if (ImGui::BeginListBox(MakeIdString("Triggers").c_str(),{300, 75 }))
+                    {
+                        for (const auto& [key, value] : GetTriggers())
+                        {
+                            ImGui::Selectable(MakeIdString(key).c_str(), false);
+                            if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                            {
+                                NodeEditor::Get()->SetSelectedNode(value->GetNode());
+                                if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"))
+                                    canvas->Scroll = value->GetNode()->GetGridPos() - NodeEditor::Get()->GetCanvasSize() / 2;
+                            }
+                            if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+                            {
+                                TRIGGER_TO_REMOVE = key;
+                                UNLINK_TRIGGER = true;
+                            }
+                        }
+                        ImGui::EndListBox();
+                    }
+                    ImGui::Separator();
+                }
+                else if (!m_Triggers.empty())
                 {
                     for (const auto& [key, value] : GetTriggers())
-                    {
-                        ImGui::Selectable(MakeIdString(key).c_str(), false);
-                        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-                        {
-                            NodeEditor::Get()->SetSelectedNode(value->GetNode());
-                            if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"))
-                                canvas->Scroll = value->GetNode()->GetGridPos() - NodeEditor::Get()->GetCanvasSize() / 2;
-                        }
-                        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
-                        {
-                            TRIGGER_TO_REMOVE = key;
-                            UNLINK_TRIGGER = true;
-                        }
-                    }
-                    ImGui::EndListBox();
+                        RemoveTrigger(key);
                 }
-                ImGui::Separator();
                 ImGui::Text("OnEnter:");
                 Window::DrawTextEditor(m_OnEnterEditor, m_OnEnter);
                 ImGui::EndTabItem();
@@ -467,8 +491,10 @@ namespace LuaFsm
                 ImGui::EndTabItem();
             }
             
-            if (ImGui::BeginTabItem(MakeIdString("Preview Lua Code").c_str()))
+            if (ImGui::BeginTabItem(MakeIdString("Lua Code").c_str()))
             {
+                if (ImGui::Button(MakeIdString("Regenerate Code").c_str()) || m_LuaCodeEditor.GetText().empty())
+                    m_LuaCodeEditor.SetText(GetLuaCode());
                 m_LuaCodeEditor.Render("Lua Code");
                 ImGui::EndTabItem();
             }
@@ -556,6 +582,35 @@ namespace LuaFsm
                 if (ImGui::Button(MakeIdString("Are you sure?").c_str()))
                 {
                     NodeEditor::Get()->GetCurrentFsm()->RemoveState(GetId());
+                    std::string filePath = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile();
+                    if (filePath.empty())
+                    {
+                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+                        ImGui::CloseCurrentPopup();
+                        ImGui::EndPopup();
+                        return;
+                    }
+                    std::string code = FileReader::ReadAllText(filePath);
+                    if (code.empty())
+                    {
+                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+                        ImGui::CloseCurrentPopup();
+                        ImGui::EndPopup();
+                        return;
+                    }
+                    std::regex regex = FsmRegex::IdRegexClassFull("FSM_STATE", m_Id);
+                    if (std::smatch match; std::regex_search(code, match, regex))
+                        code = std::regex_replace(code, regex, "");
+                    std::ofstream file(filePath);
+                    if (!file.is_open())
+                    {
+                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
+                        ImGui::CloseCurrentPopup();
+                        ImGui::EndPopup();
+                        return;
+                    }
+                    file << code;
+                    file.close();
                     DELETE_STATE = false;
                     ImGui::CloseCurrentPopup();
                 }
@@ -660,6 +715,8 @@ namespace LuaFsm
         code += fmt::format("local {0} = FSM_STATE:new({{}})\n", m_Id);
         code += fmt::format("{0}.name = \"{1}\"\n", m_Id, m_Name);
         code += fmt::format("{0}.description = \"{1}\"\n", m_Id, m_Description);
+        std::string isExitState = m_IsExitState ? "true" : "false";
+        code += fmt::format("{0}.isExitState = {1}\n", m_Id, isExitState);
         code += fmt::format("{0}.editorPos = {{{1}, {2}}}\n", m_Id, m_Node.GetGridPos().x, m_Node.GetGridPos().y);
         code += fmt::format("{0}.color = {{{1}, {2}, {3}, {4}}}\n", m_Id, m_Node.GetColor().Value.x, m_Node.GetColor().Value.y, m_Node.GetColor().Value.z, m_Node.GetColor().Value.w);
         if (!m_OnUpdate.empty())
@@ -693,6 +750,6 @@ namespace LuaFsm
     
     VisualNode* FsmState::DrawNode()
     {
-        return m_Node.Draw2(this);
+        return m_Node.Draw(this);
     }
 }

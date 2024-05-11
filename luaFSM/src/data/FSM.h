@@ -52,11 +52,12 @@ namespace LuaFsm
         void UpdateFromFile(const std::string& filePath);
 
         void DrawProperties();
-        
+        void RefactorId(const std::string& newId);
+
         nlohmann::json Serialize() const;
         static std::shared_ptr<Fsm> Deserialize(const nlohmann::json& json);
-        void UpdateToFile();
-        void UpdateFileContents(std::string& code);
+        void UpdateToFile(const std::string& oldId);
+        void UpdateFileContents(std::string& code, const std::string& oldId);
         void UpdateEditors();
         std::string GetActivateFunctionCode();
         std::string GetExportLuaCode();

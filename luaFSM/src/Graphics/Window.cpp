@@ -241,7 +241,7 @@ namespace LuaFsm
                 }
                 if (auto fsm = nodeEditor->GetCurrentFsm(); fsm && !fsm->GetLinkedFile().empty() && ImGui::MenuItem("Save"))
                 {
-                    nodeEditor->GetCurrentFsm()->UpdateToFile();
+                    nodeEditor->GetCurrentFsm()->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Exit"))
@@ -648,7 +648,7 @@ namespace LuaFsm
                 && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
                 {
                     if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
-                        nodeEditor->GetCurrentFsm()->UpdateToFile();
+                        nodeEditor->GetCurrentFsm()->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
                 }
                 if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
                 {
@@ -812,7 +812,7 @@ namespace LuaFsm
             if (ImGui::IsKeyPressed(ImGuiKey_F5))
             {
                 if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
-                    nodeEditor->GetCurrentFsm()->UpdateToFile();
+                    nodeEditor->GetCurrentFsm()->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
             }
             nodeEditor->SetCanvasPos(Math::AddVec2(ImGui::GetWindowPos(), ImGui::GetWindowContentRegionMin()));
             nodeEditor->SetCanvasSize(ImGui::GetWindowSize());
@@ -880,8 +880,14 @@ namespace LuaFsm
             if (const auto selectedNode = nodeEditor->GetSelectedNode();
                 selectedNode && ImGui::IsWindowHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Right))
             {
-                NodeEditor::DrawLine(selectedNode->GetFromPoint(ImGui::GetMousePos()), ImGui::GetMousePos());
-                NodeEditor::Get()->SetCreatingLink(true);
+                if ((selectedNode->GetType() == NodeType::State
+                    && nodeEditor->GetCurrentFsm()->GetState(selectedNode->GetId())
+                    && !nodeEditor->GetCurrentFsm()->GetState(selectedNode->GetId())->IsExitState())
+                    || selectedNode->GetType() == NodeType::Transition)
+                {
+                    NodeEditor::DrawLine(selectedNode->GetFromPoint(ImGui::GetMousePos()), ImGui::GetMousePos());
+                    NodeEditor::Get()->SetCreatingLink(true);
+                }
             }
             else if (ImGui::IsWindowHovered(ImGuiHoveredFlags_Stationary) && !ImGui::IsMouseDown(ImGuiMouseButton_Right) && NodeEditor::Get()->IsCreatingLink())
             {
@@ -1242,7 +1248,7 @@ namespace LuaFsm
         colors[ImGuiCol_ScrollbarGrab]          = theme.standard;
         colors[ImGuiCol_ScrollbarGrabHovered]   = theme.hovered;
         colors[ImGuiCol_ScrollbarGrabActive]    = theme.active;
-        colors[ImGuiCol_CheckMark]              = theme.standard;
+        colors[ImGuiCol_CheckMark]              = ImVec4(theme.standard.x * 2.f, theme.standard.y * 2.f, theme.standard.z * 2.f, theme.standard.w * 2.f);
         colors[ImGuiCol_SliderGrab]             = theme.standard;
         colors[ImGuiCol_SliderGrabActive]       = theme.active;
         colors[ImGuiCol_Button]                 = theme.standard;

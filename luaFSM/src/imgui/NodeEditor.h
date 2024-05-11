@@ -38,6 +38,13 @@ namespace LuaFsm
             return regex;
         }
 
+        static std::regex ClassBoolRegex(const std::string &id, const std::string &fieldName)
+        {
+            const auto string =  fmt::format(R"({0}\.{1}\s*=\s*((?:true|false)))", id, fieldName);
+            std::regex regex(string);
+            return regex;
+        }
+
         static std::regex ClassTableRegex(const std::string &id, const std::string &fieldName)
         {
             const auto prefix =  fmt::format(R"({0}\.{1})", id, fieldName);
@@ -63,6 +70,13 @@ namespace LuaFsm
         static std::regex IdRegexClass(const std::string &classType, const std::string &className)
         {
             const auto string = fmt::format("---@{0}\\s+({1})", classType, className);
+            std::regex regex(string);
+            return regex;
+        }
+
+        static std::regex IdRegexClassFull(const std::string &classType, const std::string &className)
+        {
+            const auto string = fmt::format("(---@{0}\\s+{1})", classType, className);
             std::regex regex(string);
             return regex;
         }

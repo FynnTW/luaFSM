@@ -57,6 +57,8 @@ namespace LuaFsm
         void ChangeTriggerId(const std::string& oldId, const std::string& newId);
         static std::shared_ptr<FsmState> Deserialize(const nlohmann::json& json);
         void UpdateEditors();
+        void SetExitState(const bool isExitState) { m_IsExitState = isExitState; }
+        [[nodiscard]] bool IsExitState() const { return m_IsExitState; }
 
     private:
         VisualNode m_Node{};
@@ -68,6 +70,7 @@ namespace LuaFsm
         TextEditor m_LuaCodeEditor{};
         std::string m_OnExit;
         TextEditor m_OnExitEditor{};
+        bool m_IsExitState = false;
         std::unordered_map<std::string, std::shared_ptr<FsmTrigger>> m_Triggers{};
     };
 }
