@@ -19,6 +19,7 @@ namespace LuaFsm
         void SetStreamSize(const int size) { m_StreamSize = size; }
         void ReadBytes(char* buffer, int size);
         std::string ReadWord();
+        static void SaveFile(const std::string& path, const std::string& content);
         std::string GetVarName(const std::string& identifier);
         std::string GetVarName(std::string& line, const std::string& identifier);
         bool LineContains(const std::string& identifier);
@@ -31,6 +32,8 @@ namespace LuaFsm
         static void RemoveTabs(std::string& line);
         static std::string ReadAllText(const std::string& path);
         static std::string RemoveStartingTab(const std::string& input);
+        static std::string lastPath;
+        static std::string lastFilePath;
 
     private:
         std::ifstream m_File;

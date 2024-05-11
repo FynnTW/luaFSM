@@ -13,6 +13,14 @@ namespace LuaFsm
     class FsmTrigger;
     typedef std::shared_ptr<FsmTrigger> FsmTriggerPtr;
     typedef std::shared_ptr<Fsm> FsmPtr;
+
+    enum class StatePopups
+    {
+        UnlinkTrigger,
+        DeleteState,
+        SetNewId
+    };
+    
     class FsmState : DrawableObject
     {
     public:
@@ -30,6 +38,7 @@ namespace LuaFsm
         void AddTrigger(const std::string& key, const FsmTriggerPtr& value);
         FsmTriggerPtr AddTrigger(const std::string& key);
         [[nodiscard]] std::string MakeIdString(const std::string& name) const;
+        void InitPopups();
         static std::vector<std::shared_ptr<FsmState>> CreateFromFile(const std::string& filePath);
         void UpdateFromFile(const std::string& filePath);
         void UpdateFileContents(std::string& code, const std::string& oldId);
@@ -70,6 +79,7 @@ namespace LuaFsm
         TextEditor m_LuaCodeEditor{};
         std::string m_OnExit;
         TextEditor m_OnExitEditor{};
+        PopupManager m_PopupManager;
         bool m_IsExitState = false;
         std::unordered_map<std::string, std::shared_ptr<FsmTrigger>> m_Triggers{};
     };

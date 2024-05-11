@@ -100,36 +100,32 @@ namespace LuaFsm
     
     void Fsm::DrawProperties()
     {
-        if (const auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty())
+        if (!m_LinkedFile.empty())
         {
             ImGui::SameLine();
             if (ImGui::Button("Load from file"))
-                UpdateFromFile(linkedFile);
+                UpdateFromFile(m_LinkedFile);
             ImGui::SameLine();
             if (ImGui::Button("Save to file"))
-                UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
+                UpdateToFile(m_Id);
         }
         if (ImGui::BeginTabBar("FSM Properties"))
         {
             if (ImGui::BeginTabItem("FSM Properties"))
             {
-                ImGui::Text("ID: %s", GetId().c_str());
+                ImGui::Text("ID: %s", m_Id.c_str());
                 ImGui::SameLine();
                 if (ImGui::Button("Refactor ID"))
                     SET_NEW_FSM_ID = true;
                 ImGui::InputText("Name", &m_Name);
                 ImGui::Separator();
                 ImGui::Text("Initial State: ");
-                if (!GetInitialStateId().empty())
+                if (!m_InitialStateId.empty())
                 {
                     ImGui::SameLine();
-                    ImGui::Selectable(GetInitialStateId().c_str(), false);
-                }
-                if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-                {
-                    NodeEditor::Get()->SetSelectedNode(NodeEditor::Get()->GetNode(GetInitialStateId()));
-                    if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"))
-                        canvas->Scroll = NodeEditor::Get()->GetNode(GetInitialStateId())->GetGridPos() - NodeEditor::Get()->GetCanvasSize() / 2;
+                    ImGui::Selectable(m_InitialStateId.c_str(), false);
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                        NodeEditor::Get()->MoveToNode(m_InitialStateId);
                 }
                 ImGui::Separator();
                 ImGui::Text("Linked Lua File: ");
@@ -138,9 +134,8 @@ namespace LuaFsm
                 {
                     ImGui::Selectable(m_LinkedFile.c_str());
                     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-                    {
-                        ShellExecuteA(nullptr, "open", m_LinkedFile.c_str(), nullptr, nullptr, SW_SHOWDEFAULT);
-                    }
+                        ShellExecuteA(nullptr, "open", m_LinkedFile.c_str(),
+                                      nullptr, nullptr, SW_SHOWDEFAULT);
                 }
                 else
                     ImGui::Text("Create a lua file to link it!");
@@ -207,47 +202,6 @@ namespace LuaFsm
             return;
         UpdateToFile(oldId);
     }
-    
-    nlohmann::json Fsm::Serialize() const
-    {
-        nlohmann::json j;
-        j["id"] = m_Id;
-        j["name"] = m_Name;
-        j["initialStateId"] = m_InitialStateId;
-        nlohmann::json states;
-        for (const auto& [key, value] : m_States)
-        {
-            states[key] = value->Serialize();
-        }
-        j["states"] = states;
-        nlohmann::json triggers;
-        for (const auto& [key, value] : m_Triggers)
-        {
-            triggers[key] = value->Serialize();
-        }
-        j["triggers"] = triggers;
-        return j;
-    }
-
-    std::shared_ptr<Fsm> Fsm::Deserialize(const nlohmann::json& json)
-    {
-        auto fsm = std::make_shared<Fsm>(json["id"].get<std::string>());
-        NodeEditor::Get()->SetCurrentFsm(fsm);
-        fsm->SetName(json["name"].get<std::string>());
-        fsm->SetInitialState(json["initialStateId"].get<std::string>());
-        for (const auto& [key, value] : json["states"].items())
-            fsm->AddState(FsmState::Deserialize(value));
-        for (const auto& [key, value] : json["triggers"].items())
-        {
-            const auto trigger = FsmTrigger::Deserialize(value);
-            if (const auto state = trigger->GetCurrentState(); state != nullptr)
-                state->AddTrigger(trigger);
-            else
-                fsm->AddTrigger(trigger);
-        }
-        fsm->UpdateEditors();
-        return fsm;
-    }
 
     void Fsm::UpdateToFile(const std::string& oldId)
     {
@@ -303,7 +257,6 @@ namespace LuaFsm
             for (const auto& [id, trigger] : state->GetTriggers())
                 code += fmt::format("\t{0}:registerCondition({1})\n", state->GetId(), id);
             code += fmt::format("\tself:registerState({0})\n", key);
-            
         }
         if (m_InitialStateId.empty())
             code += fmt::format("\tself:setInitialState(self.initialStateId)\n");
@@ -325,48 +278,6 @@ namespace LuaFsm
         return code;
     }
 
-    /*std::string Fsm::GetLuaCode()
-    {
-        std::string code;
-        code += fmt::format("---@diagnostic disable: inject-field\n");
-        code += fmt::format("require(\"FSM\")\n\n");
-        code += fmt::format("---@type FSM\n");
-        code += fmt::format("{0} = FSM:new({{\n", m_Id);
-        code += fmt::format("\t---Unique Identifier of this FSM\n");
-        code += fmt::format("\t---@type string\n");
-        code += fmt::format("\tid = \"{0}\",\n", m_Id);
-        code += fmt::format("\t---Name of this FSM\n");
-        code += fmt::format("\t---@type string\n");
-        code += fmt::format("\tname = \"{0}\",\n", m_Name);
-        code += fmt::format("\t---Name of the initial state\n");
-        code += fmt::format("\t---@type string\n");
-        code += fmt::format("\tinitialStateId = \"{0}\",\n", m_InitialStateId);
-        code += fmt::format("\t---States within this FSM\n");
-        code += fmt::format("\t---@type table<string, FSM_STATE>\n");
-        code += fmt::format("\tstates = {{\n");
-        code += fmt::format("\t}},\n");
-        code += fmt::format("}})\n");
-        for (const auto& value : m_States | std::views::values)
-        {
-            code += value->GetLuaCode() + "\n";
-        }
-        code += fmt::format("---Activate this FSM\n");
-        code += fmt::format("function {0}:activate()\n", m_Id);
-        for (const auto& [key, state] : m_States)
-        {
-            for (const auto& [id, trigger] : state->GetTriggers())
-                code += fmt::format("\t{0}:registerCondition({1})\n", state->GetId(), id);
-            code += fmt::format("\tself:registerState({0})\n", key);
-            
-        }
-        code += fmt::format("\tself:setInitialState({0})\n", m_InitialStateId);
-        code += fmt::format("end\n");
-        
-        return code;
-    }*/
-    
-    std::string CAPTURING_REGEX_FSM = R"(\s*([\s\S]*?)\s*end---@endFunc)";
-
     std::shared_ptr<Fsm> Fsm::CreateFromFile(const std::string& filePath)
     {
         const std::string code = FileReader::ReadAllText(filePath);
@@ -375,15 +286,12 @@ namespace LuaFsm
         std::string id;
         std::regex regex = FsmRegex::IdRegex("FSM");
         if (std::smatch match; std::regex_search(code, match, regex))
-        {
             id = match[1].str();
-        }
         else
-        {
             return nullptr;
-        }
         auto fsm = std::make_shared<Fsm>(id);
         NodeEditor::Get()->SetCurrentFsm(fsm);
+        NodeEditor::Get()->DeselectAllNodes();
         for (const auto states = FsmState::CreateFromFile(filePath); const auto& state : states)
             fsm->AddState(state);
         for (const auto conditions = FsmTrigger::CreateFromFile(filePath); const auto& condition : conditions)

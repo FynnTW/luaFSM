@@ -4,7 +4,6 @@
 #include <spdlog/fmt/bundled/format.h>
 #include <data/FsmState.h>
 
-#include "imgui_internal.h"
 #include "imgui/imgui_stdlib.h"
 #include "imgui/NodeEditor.h"
 
@@ -30,6 +29,7 @@ namespace LuaFsm
         m_Node.SetBorderColor(IM_COL32(255, 255, 255, 255));
         m_Node.SetType(NodeType::Transition);
         m_Node.SetShape(NodeShape::Circle);
+        InitPopups();
     }
 
     void FsmTrigger::UpdateEditors()
@@ -39,6 +39,25 @@ namespace LuaFsm
         Window::TrimTrailingNewlines(m_Action);
         m_ActionEditor.SetText(m_Action);
         m_LuaCodeEditor.SetText(GetLuaCode());
+    }
+
+    void FsmTrigger::InitPopups()
+    {
+        const auto unlinkNextStatePopup = std::make_shared<UnlinkStatePopup>("UnlinkNextState" + m_Id);
+        unlinkNextStatePopup->parent = m_Id;
+        m_PopupManager.AddPopup(static_cast<int>(TriggerPopups::UnlinkNextState), unlinkNextStatePopup);
+        
+        const auto unlinkCurrentStatePopup = std::make_shared<UnlinkStatePopup>("UnlinkCurrentState" + m_Id);
+        unlinkCurrentStatePopup->parent = m_Id;
+        m_PopupManager.AddPopup(static_cast<int>(TriggerPopups::UnlinkCurrentState), unlinkCurrentStatePopup);
+        
+        const auto deleteTrigger = std::make_shared<DeleteTriggerPopup>("deleteTrigger" + m_Id);
+        deleteTrigger->parent = m_Id;
+        m_PopupManager.AddPopup(static_cast<int>(TriggerPopups::DeleteTrigger), deleteTrigger);
+        
+        const auto setNewId = std::make_shared<RefactorIdPopup>("SetNewId" + m_Id, "trigger");
+        setNewId->parent = m_Id;
+        m_PopupManager.AddPopup(static_cast<int>(TriggerPopups::SetNewId), setNewId);
     }
 
     std::vector<std::shared_ptr<FsmTrigger>> FsmTrigger::CreateFromFile(const std::string& filePath)
@@ -209,10 +228,6 @@ namespace LuaFsm
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s action entry not found in file!", m_Id.c_str()});
     }
 
-
-    //std::string capturingRegex = "\\s*([\\s\\S]*?)end(?!\\s*end\\b)(?=(\\s*---@return|\\s*---@param|\\s*function|\\s*$))";
-    std::string CAPTURING_REGEX = R"(\s*([\s\S]*?)\s*end---@endFunc)";
-
     void FsmTrigger::UpdateFromFile(const std::string& filePath)
     {
         const std::string code = FileReader::ReadAllText(filePath);
@@ -312,15 +327,7 @@ namespace LuaFsm
         if (std::smatch match; std::regex_search(code, match, classRegex))
             code = std::regex_replace(code, classRegex, fmt::format(R"({0} = FSM_CONDITION:new)", m_Id));
         UpdateFileContents(code, oldId);
-        std::ofstream file(filePath);
-        if (!file.is_open())
-        {
-            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
-            return;
-        }
-        file << code;
-        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "File content updated at: %s", filePath.c_str()});
-        file.close();
+        FileReader::SaveFile(filePath, code);
     }
 
     void FsmTrigger::RefactorId(const std::string& newId)
@@ -340,8 +347,6 @@ namespace LuaFsm
         UpdateToFile(oldId);
         fsm->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
     }
-
-    bool SET_NEW_COND_ID = false;
 
     FsmState* FsmTrigger::GetCurrentState()
     {
@@ -430,15 +435,9 @@ namespace LuaFsm
         return name + "##" + m_Id;
     }
 
-    bool UNLINK_CURRENT_STATE = false;
-    bool UNLINK_NEXT_STATE = false;
-    bool ADD_CURRENT_STATE = false;
-    bool ADD_NEXT_STATE = false;
-    bool DELETE_TRIGGER = false;
-
     void FsmTrigger::DrawProperties()
     {
-        if (auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty())
+        if (const auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty())
         {
             if (ImGui::Button(MakeIdString("Load from file").c_str()))
                 UpdateFromFile(linkedFile);
@@ -449,7 +448,7 @@ namespace LuaFsm
         }
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
         if (ImGui::Button(MakeIdString("Delete Trigger").c_str()))
-            DELETE_TRIGGER = true;
+            m_PopupManager.OpenPopup(static_cast<int>(TriggerPopups::DeleteTrigger));
         ImGui::SetItemTooltip("This doesn't delete it from your lua file! Delete it manually!");
         ImGui::PopStyleColor();
         ImGui::Separator();
@@ -457,24 +456,19 @@ namespace LuaFsm
         {
             if (ImGui::BeginTabItem(MakeIdString("Trigger Properties").c_str()))
             {
-                /*
-                ImGui::Text("inMidPoint: %f, %f", m_Node.GetInLineMidPoint().x, m_Node.GetInLineMidPoint().y);
-                ImGui::Text("outMidPoint: %f, %f", m_Node.GetOutLineMidPoint().x, m_Node.GetOutLineMidPoint().y);
-                ImGui::Text("mousePos: %f, %f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
-                */
                 ImGui::Text("ID: %s", GetId().c_str());
                 ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Refactor ID").c_str()))
-                    SET_NEW_COND_ID = true;
+                    m_PopupManager.OpenPopup(static_cast<int>(TriggerPopups::SetNewId));
                 ImGui::Text("Name");
                 std::string name = GetName();
-                std::string nameLabel = "##Name" + GetId();
+                const std::string nameLabel = "##Name" + GetId();
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::InputText(nameLabel.c_str(), &name);
                 SetName(name);
                 ImGui::Text("Description");
                 std::string description = GetDescription();
-                std::string descriptionLabel = "##Description" + GetId();
+                const std::string descriptionLabel = "##Description" + GetId();
                 ImGui::InputTextMultiline(descriptionLabel.c_str(), &description, {ImGui::GetContentRegionAvail().x, 60});
                 SetDescription(description);
                 ImGui::Text("Priority");
@@ -499,50 +493,42 @@ namespace LuaFsm
                     m_Node.HighLightSelected();
                 ImGui::Separator();
                 ImGui::Text("Current State: ");
-                ImGui::SameLine();
                 if (GetCurrentState())
                 {
+                    ImGui::SameLine();
                     ImGui::Selectable(MakeIdString(m_CurrentStateId).c_str(), false);
                     if (ImGui::IsItemClicked())
-                    {
-                        NodeEditor::Get()->SetSelectedNode(GetCurrentState()->GetNode());
-                        if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"); canvas && GetCurrentState())
-                            canvas->Scroll = GetCurrentState()->GetNode()->GetGridPos() - NodeEditor::Get()->GetCanvasSize() / 2;
-                    }
+                        NodeEditor::Get()->MoveToNode(m_CurrentStateId);
                     if (ImGui::IsItemHovered())
                     {
                         GetCurrentState()->GetNode()->HighLight();
                         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                         {
-                            UNLINK_CURRENT_STATE = true;
+                            dynamic_cast<UnlinkStatePopup*>(m_PopupManager.GetPopup(
+                                static_cast<int>(TriggerPopups::UnlinkCurrentState)).get())->stateId = m_CurrentStateId;
+                            m_PopupManager.OpenPopup(static_cast<int>(TriggerPopups::UnlinkCurrentState));
                         }
                     }
                 }
-                else if (ImGui::Button(MakeIdString("Add Current State").c_str()))
-                    ADD_CURRENT_STATE = true;
                 ImGui::Separator();
                 ImGui::Text("Next State: ");
-                ImGui::SameLine();
                 if (GetNextState())
                 {
+                    ImGui::SameLine();
                     ImGui::Selectable(MakeIdString(m_NextStateId).c_str(), false);
                     if (ImGui::IsItemClicked())
-                    {
-                        NodeEditor::Get()->SetSelectedNode(GetNextState()->GetNode());
-                        if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"); canvas && GetNextState())
-                            canvas->Scroll = GetNextState()->GetNode()->GetGridPos() - NodeEditor::Get()->GetCanvasSize() / 2;
-                    }
+                        NodeEditor::Get()->MoveToNode(m_NextStateId);
                     if (ImGui::IsItemHovered())
                     {
                         GetNextState()->GetNode()->HighLight();
                         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                         {
-                            UNLINK_NEXT_STATE = true;
+                            dynamic_cast<UnlinkStatePopup*>(m_PopupManager.GetPopup(
+                                static_cast<int>(TriggerPopups::UnlinkNextState)).get())->stateId = m_NextStateId;
+                            m_PopupManager.OpenPopup(static_cast<int>(TriggerPopups::UnlinkNextState));
                         }
                     }
                 }
-                else if (ImGui::Button(MakeIdString("Add Next State").c_str()))
-                    ADD_NEXT_STATE = true;
                 ImGui::Separator();
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
                 ImGui::PopStyleColor();
@@ -572,235 +558,8 @@ namespace LuaFsm
             ImGui::EndTabBar();
         }
 
-        if (DELETE_TRIGGER)
-        {
-            std::string popupId = MakeIdString("Delete Trigger");
-            ImGui::OpenPopup(popupId.c_str());
-            if (ImGui::BeginPopup(popupId.c_str()))
-            {
-                if (ImGui::Button(MakeIdString("Are you sure?").c_str()))
-                {
-                    NodeEditor::Get()->GetCurrentFsm()->RemoveTrigger(GetId());
-                    std::string filePath = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile();
-                    if (filePath.empty())
-                    {
-                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
-                        ImGui::CloseCurrentPopup();
-                        ImGui::EndPopup();
-                        return;
-                    }
-                    std::string code = FileReader::ReadAllText(filePath);
-                    if (code.empty())
-                    {
-                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
-                        ImGui::CloseCurrentPopup();
-                        ImGui::EndPopup();
-                        return;
-                    }
-                    std::regex regex = FsmRegex::IdRegexClassFull("FSM_CONDITION", m_Id);
-                    if (std::smatch match; std::regex_search(code, match, regex))
-                        code = std::regex_replace(code, regex, "");
-                    std::ofstream file(filePath);
-                    if (!file.is_open())
-                    {
-                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
-                        ImGui::CloseCurrentPopup();
-                        ImGui::EndPopup();
-                        return;
-                    }
-                    file << code;
-                    file.close();
-                    DELETE_TRIGGER = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::SameLine();
-                if (ImGui::Button(MakeIdString("Cancel").c_str()))
-                {
-                    DELETE_TRIGGER = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::EndPopup();
-            }
-        }
-
-        if (UNLINK_CURRENT_STATE)
-        {
-            std::string popupId = MakeIdString("Unlink Current State");
-            ImGui::OpenPopup(popupId.c_str());
-            if (ImGui::BeginPopup(popupId.c_str()))
-            {
-                if (ImGui::Button(MakeIdString("Unlink").c_str()))
-                {
-                    if (auto state = GetCurrentState())
-                        state->RemoveTrigger(GetId());
-                    UNLINK_CURRENT_STATE = false;
-                    SetCurrentState("");
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::SameLine();
-                if (ImGui::Button(MakeIdString("Cancel").c_str()))
-                {
-                    UNLINK_CURRENT_STATE = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::EndPopup();
-            }
-        }
-
-        if (UNLINK_NEXT_STATE)
-        {
-            std::string popupId = MakeIdString("Unlink Next State");
-            ImGui::OpenPopup(popupId.c_str());
-            if (ImGui::BeginPopup(popupId.c_str()))
-            {
-                if (ImGui::Button(MakeIdString("Unlink").c_str()))
-                {
-                    UNLINK_NEXT_STATE = false;
-                    SetNextState("");
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::SameLine();
-                if (ImGui::Button(MakeIdString("Cancel").c_str()))
-                {
-                    UNLINK_NEXT_STATE = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::EndPopup();
-            }
-        }
-
-        if (ADD_CURRENT_STATE)
-        {
-            std::string popupId = MakeIdString("Add Current State");
-            ImGui::OpenPopup(popupId.c_str());
-            if (ImGui::BeginPopup(popupId.c_str()))
-            {
-                static std::string key;
-                ImGui::InputText(MakeIdString("id").c_str(), &key);
-                static std::string name;
-                ImGui::InputText(MakeIdString("name").c_str(), &name);
-                if (const auto invalid = std::regex_search(key, FsmRegex::InvalidIdRegex());
-                    !invalid && !key.empty() && !name.empty() &&
-                    !NodeEditor::Get()->GetCurrentFsm()->GetState(key)
-                    && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key)
-                    && ImGui::Button(MakeIdString("Add State").c_str())
-                    )
-                {
-                    auto newState = NodeEditor::Get()->GetCurrentFsm()->AddState(key);
-                    NodeEditor::Get()->GetCurrentFsm()->GetTrigger(m_Id)->SetCurrentState(newState->GetId());
-                    newState->SetName(name);
-                    ADD_CURRENT_STATE = false;
-                    ImGui::SetClipboardText(newState->GetLuaCode().c_str());
-                    ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", key.c_str()});
-                    newState->AppendToFile();
-                    key = "";
-                    name = "";
-                    ImGui::CloseCurrentPopup();
-                }
-                else if (invalid)
-                    ImGui::Text("Invalid ID");
-                else if (key.empty())
-                    ImGui::Text("ID can't be empty");
-                else if (name.empty())
-                    ImGui::Text("Name can't be empty");
-                else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key))
-                    ImGui::Text("Trigger with this ID already exists");
-                else if (NodeEditor::Get()->GetCurrentFsm()->GetState(key))
-                    ImGui::Text("State with this ID already exists");
-                ImGui::SameLine();
-                if (ImGui::Button(MakeIdString("Cancel").c_str()))
-                {
-                    ADD_CURRENT_STATE = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::EndPopup();
-            }
-        }
-
-        if (ADD_NEXT_STATE)
-        {
-            std::string popupId = MakeIdString("Add Next State");
-            ImGui::OpenPopup(popupId.c_str());
-            if (ImGui::BeginPopup(popupId.c_str()))
-            {
-                static std::string key;
-                ImGui::InputText(MakeIdString("id").c_str(), &key);
-                static std::string name;
-                ImGui::InputText(MakeIdString("name").c_str(), &name);
-                if (const auto invalid = std::regex_search(key, FsmRegex::InvalidIdRegex());
-                    !invalid && !key.empty() && !name.empty() &&
-                    !NodeEditor::Get()->GetCurrentFsm()->GetState(key)
-                    && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key)
-                    && ImGui::Button(MakeIdString("Add State").c_str()))
-                {
-                    ADD_NEXT_STATE = false;
-                    auto newState = NodeEditor::Get()->GetCurrentFsm()->AddState(key);
-                    const auto trigger = NodeEditor::Get()->GetCurrentFsm()->GetTrigger(GetId());
-                    trigger->SetNextState(newState->GetId());
-                    newState->SetName(name);
-                    ImGui::SetClipboardText(newState->GetLuaCode().c_str());
-                    ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", key.c_str()});
-                    newState->AppendToFile();
-                    key = "";
-                    name = "";
-                    ImGui::CloseCurrentPopup();
-                }
-                else if (invalid)
-                    ImGui::Text("Invalid ID");
-                else if (key.empty())
-                    ImGui::Text("ID can't be empty");
-                else if (name.empty())
-                    ImGui::Text("Name can't be empty");
-                else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(key))
-                    ImGui::Text("Trigger with this ID already exists");
-                else if (NodeEditor::Get()->GetCurrentFsm()->GetState(key))
-                    ImGui::Text("State with this ID already exists");
-                ImGui::SameLine();
-                if (ImGui::Button(MakeIdString("Cancel").c_str()))
-                {
-                    ADD_NEXT_STATE = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::EndPopup();
-            }
-        }
-
-        if (SET_NEW_COND_ID)
-        {
-            std::string popupId = MakeIdString("Refactor ID");
-            ImGui::OpenPopup(popupId.c_str());
-            if (ImGui::BeginPopup(popupId.c_str()))
-            {
-                static std::string newId;
-                ImGui::InputText(MakeIdString("New ID").c_str(), &newId);
-                if (const auto invalid = std::regex_search(newId, FsmRegex::InvalidIdRegex());
-                    !invalid && !newId.empty()
-                    && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(newId)
-                    && !NodeEditor::Get()->GetCurrentFsm()->GetState(newId)
-                    && ImGui::Button(MakeIdString("Refactor ID").c_str()))
-                {
-                    RefactorId(newId);
-                    SET_NEW_COND_ID = false;
-                    newId = "";
-                    ImGui::CloseCurrentPopup();
-                }
-                else if (invalid)
-                    ImGui::Text("Invalid ID");
-                else if (newId.empty())
-                    ImGui::Text("ID can't be empty");
-                else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(newId))
-                    ImGui::Text("Trigger with this ID already exists");
-                else if (NodeEditor::Get()->GetCurrentFsm()->GetState(newId))
-                    ImGui::Text("State with this ID already exists");
-                ImGui::SameLine();
-                if (ImGui::Button("Cancel"))
-                {
-                    SET_NEW_COND_ID = false;
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::EndPopup();
-            }
-        }
+        m_PopupManager.ShowOpenPopups();
+        
     }
 
     void FsmTrigger::AppendToFile()
@@ -815,45 +574,7 @@ namespace LuaFsm
                 return;
             code += "\n\n";
             code += GetLuaCode();
-            std::ofstream file(filePath);
-            if (!file.is_open())
-            {
-                ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
-                return;
-            }
-            file << code;
-            file.close();
+            FileReader::SaveFile(filePath, code);
         }
-    }
-
-    std::shared_ptr<FsmTrigger> FsmTrigger::Deserialize(const nlohmann::json& json)
-    {
-        auto trigger = std::make_shared<FsmTrigger>(json["id"].get<std::string>());
-        trigger->SetName(json["name"].get<std::string>());
-        trigger->SetDescription(json["description"].get<std::string>());
-        trigger->SetPriority(json["priority"].get<int>());
-        trigger->SetNextState(json["nextStateId"].get<std::string>());
-        trigger->SetCurrentState(json["currentStateId"].get<std::string>());
-        trigger->SetCondition(json["condition"].get<std::string>());
-        trigger->SetAction(json["action"].get<std::string>());
-        trigger->GetNode()->SetTargetPosition({json["positionX"].get<float>(), json["positionY"].get<float>()});
-        trigger->UpdateEditors();
-        return trigger;
-    }
-
-    nlohmann::json FsmTrigger::Serialize() const
-    {
-        nlohmann::json j;
-        j["id"] = m_Id;
-        j["name"] = m_Name;
-        j["description"] = m_Description;
-        j["priority"] = m_Priority;
-        j["nextStateId"] = m_NextStateId;
-        j["currentStateId"] = m_CurrentStateId;
-        j["condition"] = m_Condition;
-        j["action"] = m_Action;
-        j["positionX"] = m_Node.GetTargetPosition().x;
-        j["positionY"] = m_Node.GetTargetPosition().y;
-        return j;
     }
 }

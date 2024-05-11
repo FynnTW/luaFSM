@@ -6,6 +6,7 @@
 #include "FsmState.h"
 #include "FsmTrigger.h"
 #include "json.hpp"
+#include "imgui/popups/Popup.h"
 
 namespace LuaFsm
 {
@@ -61,6 +62,7 @@ namespace LuaFsm
         void UpdateEditors();
         std::string GetActivateFunctionCode();
         std::string GetExportLuaCode();
+        PopupManager* GetPopupManager() {return &m_PopupManager;}
 
     private:
         std::unordered_map<std::string, FsmStatePtr> m_States{};
@@ -68,5 +70,6 @@ namespace LuaFsm
         std::string m_InitialStateId;
         std::string m_LinkedFile = "";
         TextEditor m_LuaCodeEditor;
+        PopupManager m_PopupManager;
     };
 }

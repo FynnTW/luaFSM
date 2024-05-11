@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "data/FSM.h"
 #include "GLFW/glfw3.h"
+#include "imgui/popups/Popup.h"
 
 namespace LuaFsm
 {
@@ -12,6 +13,19 @@ namespace LuaFsm
         std::shared_ptr<Window> window;
         unsigned int width, height;
         bool vSync;
+    };
+
+    enum class WindowPopups : int
+    {
+        AddFsmPopup,
+        ThemeEditor,
+        LoadFile,
+        CreateFilePopup,
+        AddStateMain,
+        AddStateCursor,
+        PasteState,
+        AddTriggerCursor,
+        PasteTrigger,
     };
     
     struct WindowProps
@@ -85,6 +99,8 @@ namespace LuaFsm
         static void MainMenu();
         static void MainDockSpace();
         static void Canvas();
+        static void CanvasKeyBindManager();
+        static void DragArrows(VisualNode* existingCurveNode);
         static void Properties();
         void EndImGui() const;
         GLFWwindow* GetNativeWindow() const {return m_Window;}
@@ -102,7 +118,10 @@ namespace LuaFsm
         static void SetTheme(const std::string& name);
         static void SetTheme(const ImGuiColorTheme& theme);
         static void RemoveTheme(const std::string& name);
-        
+        static std::string GetActiveTheme() {return m_ActiveTheme;}
+        static void SetActiveTheme(const std::string& name) {m_ActiveTheme = name;}
+        static PopupManager* GetPopupManager() {return &m_PopupManager;}
+        static void InitializePopups();
 
     private:
         void Init(const WindowProps& props);
@@ -118,6 +137,7 @@ namespace LuaFsm
             unsigned int width, height;
             bool vSync;
         } m_Data;
+        static PopupManager m_PopupManager;
         static std::unordered_map<std::string, ImFont*> m_Fonts;
     
     };

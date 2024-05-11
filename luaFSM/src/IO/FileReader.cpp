@@ -6,6 +6,10 @@
 
 namespace LuaFsm
 {
+    
+    std::string FileReader::lastPath;
+    std::string FileReader::lastFilePath;
+    
     std::string FileReader::ReadLine()
     {
         std::string line;
@@ -97,6 +101,19 @@ namespace LuaFsm
         std::string buffer;
         m_File >> buffer;
         return buffer;
+    }
+
+    void FileReader::SaveFile(const std::string& path, const std::string& content)
+    {
+        std::ofstream file(path);
+        if (!file.is_open())
+        {
+            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to save file at: %s", path.c_str()});
+            return;
+        }
+        file << content;
+        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Saved file at: %s", path.c_str()});
+        file.close();
     }
 
     std::string FileReader::GetVarName(const std::string& identifier)

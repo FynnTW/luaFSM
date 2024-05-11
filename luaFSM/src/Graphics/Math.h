@@ -3,35 +3,36 @@
 
 namespace LuaFsm
 {
-    inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs)
-    {
-        return {lhs.x + rhs.x, lhs.y + rhs.y};
-    }
-    inline ImVec2 operator+(const ImVec2& lhs, const float& value)
-    {
-        return {lhs.x + value, lhs.y + value};
-    }
+/*
     inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs)
     {
         return {lhs.x - rhs.x, lhs.y - rhs.y};
-    }
-    inline ImVec2 operator-(const ImVec2& lhs, const float& value)
-    {
-        return {lhs.x - value, lhs.y - value};
     }
     inline ImVec2 operator*(const ImVec2& lhs, const ImVec2& rhs)
     {
         return {lhs.x * rhs.x, lhs.y * rhs.y};
     }
-    inline ImVec2 operator*(const ImVec2& lhs, const float& value)
+    
+    inline ImVec2 operator-(const ImVec2& lhs, const float& value)
     {
-        return {lhs.x * value, lhs.y * value};
+        return {lhs.x - value, lhs.y - value};
+    }
+    inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs)
+    {
+        return {lhs.x + rhs.x, lhs.y + rhs.y};
     }
     inline ImVec2 operator/(const ImVec2& lhs, const float& value)
     {
         return {lhs.x / value, lhs.y / value};
     }
-    
+    inline ImVec2 operator*(const ImVec2& lhs, const float& value)
+    {
+        return {lhs.x * value, lhs.y * value};
+    }
+    inline ImVec2 operator+(const ImVec2& lhs, const float& value)
+    {
+        return {lhs.x + value, lhs.y + value};
+    }*/
     class Math
     {
     public:

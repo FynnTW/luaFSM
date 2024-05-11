@@ -32,11 +32,6 @@ FSM = {
     ---@type string
     initialStateId = nil,
 
-    ---@type table
-    data = {
-
-    }
-
 } FSM.__index = FSM
 
 ------------------------------------------------
@@ -80,7 +75,7 @@ end
 ---Register a state with the FSM
 ---@param state table
 function FSM:registerState(state)
-    --State must have an ID and events
+    --State must have an ID
     if not state.id or state.id == "" then
         return
     end
@@ -128,7 +123,6 @@ function FSM:changeState(newState)
 
     --Fire the onEnter function of the new state
     self.currentState:onEnter()
-
 end
 
 ------------------------------------------------
@@ -152,25 +146,55 @@ end
 
 ---------------------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------------------
+-- FSM Node
+---------------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------------------
+---Base FSM Node class
+---@class FSM_NODE
+FSM_NODE = {
+
+    ---@type string
+    id = "",
+
+    ---@type string
+    name = "",
+
+    ---@type string
+    description = "",
+
+    ---@type table<number>
+    editorPos = {0, 0},
+
+    ---@type table<number>
+    color = {0, 0, 0, 0},
+
+} FSM_NODE.__index = FSM_NODE
+
+---Constructor for FSM Node
+---@param o table
+---@return any newObject
+function FSM_NODE:new(o)
+    o = o or {
+        id = "",
+        name = "",
+        description = "",
+        editorPos = {0, 0},
+        color = {0, 0, 0, 0},
+    }
+    setmetatable(o, FSM_NODE)
+    return o
+end
+
+---------------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------------------
 -- FSM State
 ---------------------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------------------
 
+FSM_STATE = FSM_NODE:new({})
 ---Base FSM State class
----@class FSM_STATE
+---@class FSM_STATE : FSM_NODE
 FSM_STATE = {
-
-    ---Name of the state
-    ---@type string
-    name = "",
-
-    ---ID of the state
-    ---@type string
-    id = "",
-
-    ---Description of the state
-    ---@type string
-    description = "",
 
     ---Function called when the state is entered
     ---@type function
@@ -188,11 +212,17 @@ FSM_STATE = {
     ---@type table<string, FSM_CONDITION>
     links = nil,
 
+    ---If the state is an exit state
+    ---@type boolean
+    isExitState = nil,
+
     ---FSM the state belongs to
     ---@type FSM
     FSM = nil,
 
-} FSM_STATE.__index = FSM_STATE
+}
+FSM_STATE.__index = FSM_STATE
+
 
 ------------------------------------------------
 --Constructor
@@ -243,32 +273,34 @@ end
 --FSM State flow
 ------------------------------------------------
 
+---Sort the conditions of the state by priority
+---@return table<FSM_CONDITION>
+function FSM_STATE:sortConditions()
+    local sorted = {}
+    local i = 1
+    for _, condition in pairs(self.links) do
+        sorted[i] = condition
+        i = i + 1
+    end
+    table.sort(sorted, function(a, b)
+        return a.priority > b.priority
+    end)
+    return sorted
+end
+
 ---Evaluate the conditions of the state
 function FSM_STATE:evaluateConditions()
-
-    ---If a trigger is true, it will be stored here
-    ---@type FSM_CONDITION
-    local trueCondition = nil
-
-    ---Keep track of the highest priority of the triggers, initialize to a very low number
-    local highestPriority = -1000000
-
-    ---Loop through the triggers and evaluate them
-    for _, condition in pairs(self.links) do
-        if condition:evaluate() and condition.priority > highestPriority then
-            trueCondition = condition
-            highestPriority = condition.priority
+    local sorted = self:sortConditions()
+    for _, condition in pairs(sorted) do
+        if condition:evaluate() then
+            condition:action()
+            if condition:getNextState() then
+                self.FSM:changeState(condition:getNextState())
+                if condition:getNextState().isExitState then
+                    return
+                end
+            end
         end
-    end
-
-    if not trueCondition then return end
-
-    ---Get the next state of the true and highest priority trigger
-    local nextState = trueCondition:getNextState()
-
-    ---Change the state of the FSM
-    if nextState then
-        self.FSM:changeState(nextState)
     end
 end
 
@@ -287,21 +319,10 @@ end
 ---------------------------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------------------------
 
+FSM_CONDITION = FSM_NODE:new({})
 ---Base FSM Condition class
----@class FSM_CONDITION
+---@class FSM_CONDITION : FSM_NODE
 FSM_CONDITION = {
-
-    ---Name of the condition
-    ---@type string
-    name = "",
-
-    ---ID of the condition
-    ---@type string
-    id = "",
-
-    ---Description of the condition
-    ---@type string
-    description = "",
 
     ---Priority of the condition
     ---@type integer
@@ -315,6 +336,10 @@ FSM_CONDITION = {
     ---@type string
     nextStateId = "",
 
+    ---ID of the current state
+    ---@type string
+    currentStateId = "",
+
     ---Next state of the condition
     ---@type FSM_STATE
     nextState = nil,
@@ -322,7 +347,8 @@ FSM_CONDITION = {
     ---Current state of the condition
     ---@type FSM_STATE
     currentState = nil,
-} FSM_CONDITION.__index = FSM_CONDITION
+} 
+FSM_CONDITION.__index = FSM_CONDITION
 
 ------------------------------------------------
 --Constructor

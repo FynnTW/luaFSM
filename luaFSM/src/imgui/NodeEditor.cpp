@@ -19,34 +19,6 @@ namespace LuaFsm
     NodeEditor::~NodeEditor()
     = default;
 
-    int NODE_COUNT = 0;
-
-    ImVec2 NodeEditor::GetNextNodePos(VisualNode* node)
-    {
-        NODE_COUNT++;
-        
-        return {100 + (NODE_COUNT * 10.f), 50 + (NODE_COUNT * 10.f)};
-        /*
-        * 
-        auto newPos = ImVec2(100, 0);
-        if (m_LastNode)
-            newPos = m_LastNodePos;
-            //m_LastNodePos = MathHelpers::AddVec2(m_CanvasPos, ImVec2(50, 100));
-        m_LastNodePos = newPos;
-        m_LastNodePos.x += node->GetSize().x + 50;
-        m_LastNodePos.y += node->GetSize().y + 25;
-        if (m_LastNodePos.x > GetCanvasSize().x)
-        {
-            m_LastNodePos.x = 100;
-            m_LastNodePos.y += node->GetSize().y * 2;
-        }
-        m_LastNode = node;
-        newPos.x = std::max(newPos.x, 100.0f);
-        newPos.y = std::max(newPos.y, 100.0f);
-        return newPos;
-         */
-    }
-
     ImVec2 normalize(const ImVec2& vec)
     {
         const float length = std::sqrt(vec.x * vec.x + vec.y * vec.y);
@@ -130,8 +102,8 @@ namespace LuaFsm
     }
     void NodeEditor::DrawConnection(VisualNode* fromNode, VisualNode* toNode)
     {
-        auto fromPos = fromNode->GetFromPoint(toNode);
-        auto toPos = toNode->GetFromPoint(fromNode);
+        const auto fromPos = fromNode->GetFromPoint(toNode);
+        const auto toPos = toNode->GetFromPoint(fromNode);
         float curve;
         if (fromNode->GetType() == NodeType::Transition)
         {
@@ -166,20 +138,52 @@ namespace LuaFsm
         ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Exported file at: %s", filePath.c_str()});
     }
 
-    void NodeEditor::SaveFsm(const std::string& filePath) const
+    IdValidityError NodeEditor::CheckIdValidity(const std::string& id) const
     {
-        if (!m_Fsm)
-            return;
-        const nlohmann::json j = m_Fsm->Serialize();
-        std::ofstream file(filePath);
-        if (!file.is_open())
+        if (id.empty())
+            return IdValidityError::EmptyId;
+        if (std::regex_search(id, FsmRegex::InvalidIdRegex()))
+            return IdValidityError::InvalidId;
+        if (m_Fsm)
         {
-            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to save file at: %s", filePath.c_str()});
-            return;
+            if (m_Fsm->GetState(id))
+                return IdValidityError::DuplicateIdState;
+            if (m_Fsm->GetTrigger(id))
+                return IdValidityError::DuplicateIdTrigger;
         }
-        file << j.dump(4);
-        file.close();
-        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Saved file at: %s", filePath.c_str()});
+        return IdValidityError::Valid;
+    }
+
+    void NodeEditor::InformValidityError(const IdValidityError error)
+    {
+        if (error == IdValidityError::Valid)
+            return;
+        if (error == IdValidityError::EmptyId)
+        {
+            ImGui::Text("FSM ID cannot be empty");
+        }
+        else if (error == IdValidityError::InvalidId)
+        {
+            ImGui::Text("Invalid FSM ID");
+        }
+        else if (error == IdValidityError::DuplicateIdState)
+        {
+            ImGui::Text("State with this ID already exists");
+        }
+        else if (error == IdValidityError::DuplicateIdTrigger)
+        {
+            ImGui::Text("Trigger with this ID already exists");
+        }
+    }
+
+    void NodeEditor::MoveToNode(const std::string& id)
+    {
+        VisualNode* node = GetNode(id);
+        if (!node)
+            return;
+        SetSelectedNode(node);
+        if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"))
+            canvas->Scroll = node->GetGridPos() - GetCanvasSize() / 2;
     }
 
     void NodeEditor::DeselectAllNodes()

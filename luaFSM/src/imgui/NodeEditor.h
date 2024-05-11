@@ -100,9 +100,19 @@ namespace LuaFsm
             return regex;
         }
     };
+
+    enum class IdValidityError
+    {
+        Valid,
+        EmptyId,
+        DuplicateIdState,
+        DuplicateIdTrigger,
+        InvalidId
+    };
     
     class VisualNode; //forward declaration
     class Fsm; //forward declaration
+    
     class NodeEditor
     {
     public:
@@ -124,7 +134,6 @@ namespace LuaFsm
         //Last node position
         [[nodiscard]] ImVec2 GetLastNodePos() const { return m_LastNodePos; }
         void SetLastNodePos(const ImVec2& pos) { m_LastNodePos = pos; }
-        ImVec2 GetNextNodePos(VisualNode* node);
 
         //Selected nodes
         [[nodiscard]] VisualNode* GetSelectedNode() const { return m_SelectedNode; }
@@ -141,7 +150,7 @@ namespace LuaFsm
         static void DrawConnection(VisualNode* fromNode, VisualNode* toNode);
         void ExportLua(const std::string& filePath) const;
 
-        void SetCurrentFsm(const FsmPtr& fsm) { m_Fsm = fsm; }
+        void SetCurrentFsm(const FsmPtr& fsm) { m_Fsm = fsm; DeselectAllNodes(); }
         [[nodiscard]] FsmPtr GetCurrentFsm() const { return m_Fsm; }
 
         static NodeEditor* Get() { return m_Instance; }
@@ -151,8 +160,6 @@ namespace LuaFsm
 
         [[nodiscard]] bool ShowFsmProps() const { return m_ShowFsmProps; }
         void SetShowFsmProps(const bool showFsmProps) { m_ShowFsmProps = showFsmProps; }
-
-        void SaveFsm(const std::string& filePath) const;
 
         void CopyNode(VisualNode* node) { m_CopiedNode = node; }
         [[nodiscard]] VisualNode* GetCopiedNode() const { return m_CopiedNode; }
@@ -169,8 +176,17 @@ namespace LuaFsm
         bool IsSettingOutCurve() const { return m_IsSettingOutCurve; }
         void SetSettingOutCurve(const bool settingOutCurve) { m_IsSettingOutCurve = settingOutCurve; }
 
+        IdValidityError CheckIdValidity(const std::string& id) const;
+        static void InformValidityError(IdValidityError error);
+        void MoveToNode(const std::string& id);
+
         void SetCurveNode(VisualNode* node) { m_CurveNode = node; }
         [[nodiscard]] VisualNode* GetCurveNode() const { return m_CurveNode; }
+
+        bool AppendStates() const { return m_AppendStates; }
+        void SetAppendStates(const bool appendStates) { m_AppendStates = appendStates; }
+
+        void MoveToNode(const std::string& id) const;
         
     public:
         inline static uint32_t nodeWindowFlags = ImGuiWindowFlags_NoCollapse
@@ -199,6 +215,7 @@ namespace LuaFsm
         FsmPtr m_Fsm = nullptr;
         static NodeEditor* m_Instance;
         float m_Scale = 1.0f;
+        bool m_AppendStates = true;
     };
     
 }

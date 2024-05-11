@@ -142,6 +142,7 @@
     <ClInclude Include="src\imgui\fa_solid_900.h" />
     <ClInclude Include="src\imgui\IconsFontAwesome6.h" />
     <ClInclude Include="src\imgui\ImGuiNotify.hpp" />
+    <ClInclude Include="src\imgui\popups\Popup.h" />
     <ClInclude Include="src\IO\FileReader.h" />
     <ClInclude Include="src\Log.h" />
     <ClInclude Include="src\data\DrawableObject.h" />
@@ -160,6 +161,7 @@
     <ClCompile Include="src\Graphics\Math.cpp" />
     <ClCompile Include="src\Graphics\VisualNode.cpp" />
     <ClCompile Include="src\Graphics\Window.cpp" />
+    <ClCompile Include="src\imgui\popups\Popup.cpp" />
     <ClCompile Include="src\IO\FileReader.cpp" />
     <ClCompile Include="src\Log.cpp" />
     <ClCompile Include="src\data\DrawableObject.cpp" />

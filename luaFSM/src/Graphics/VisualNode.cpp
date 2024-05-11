@@ -87,7 +87,7 @@ namespace LuaFsm
             ImGuiChildFlags_None,NodeEditor::nodeWindowFlags);
         {
             //const ImVec2 canvasPos = ImGui::GetWindowPos();
-            const ImVec2 canvasPos = ImGui::GetItemRectMin();
+            ImVec2 canvasPos = ImGui::GetItemRectMin();
             auto drawList = ImGui::GetWindowDrawList();
             m_LastPosition = (canvasPos + m_Center);
             HandleSelection(editor);

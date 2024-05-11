@@ -1,19 +1,17 @@
 ﻿#include "pch.h"
 #include "Window.h"
-
+#include "imgui/ImGuiImpl.h"
 #include "imgui.h"
-#include "imgui_internal.h"
 #include "imgui/imgui_stdlib.h"
 #include "Log.h"
-#include "imgui/ImGuiImpl.h"
 #include "luaFsm.h"
 #include "data/FSM.h"
 #include "imgui/TextEditor.h"
 #include "imgui/NodeEditor.h"
-#include "imgui/ImFileDialog.h"
 #include "IO/FileReader.h"
 #include "imgui/ImGuiNotify.hpp"
 #include "imgui/IconsFontAwesome6.h"
+#include "imgui/popups/Popup.h"
 
 //callback for window close glfw
 bool SHUTDOWN = false;
@@ -26,7 +24,7 @@ namespace LuaFsm
 {
     namespace {
         bool S_GLFW_INITIALIZED = false;
-        ImFont* FONT = nullptr;
+        ImFont* MAIN_EDITOR_FONT = nullptr;
     }
 
     //static data initializers
@@ -34,14 +32,9 @@ namespace LuaFsm
     std::unordered_map<std::string, ImFont*> Window::m_Fonts = {};
     std::unordered_map<std::string, Window::ImGuiColorTheme> Window::m_Themes = {};
     std::string Window::m_ActiveTheme;
+    PopupManager Window::m_PopupManager{};
 
     bool MAIN_DOCK_OPENED = true;
-    bool ADD_STATE_POPUP = false;
-    bool ADD_FSM_POPUP = false;
-    bool LOAD_FILE = false;
-    bool SELECT_FILE = false;
-    bool OPEN_THEME_EDITOR = false;
-    
     bool DOCK_SPACE_SET = false;
     
     ImVec2 CURSOR_POS = {0, 0};
@@ -49,6 +42,8 @@ namespace LuaFsm
     bool ADD_NEW_TRIGGER_AT_CURSOR = false;
     bool PASTE_NEW_STATE_AT_CURSOR = false;
     bool PASTE_NEW_TRIGGER_AT_CURSOR = false;
+    bool PROPERTIES_FIRST_TIME = true;
+    bool FIRST_OPEN = true;
     
     std::string LAST_SAVE_PATH;
     std::string LAST_OPEN_PATH;
@@ -93,11 +88,13 @@ namespace LuaFsm
         Application::Get()->Close();
     }
     
+    IM_MSVC_RUNTIME_CHECKS_OFF
     void Window::InitImGui()
     {
         InitThemes();
         ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO(); (void)io;
+        ImGuiIO& io = ImGui::GetIO();
+        (void)io;
         ImGui::StyleColorsDark();
         ImGuiStyle& style = ImGui::GetStyle();
         io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;
@@ -114,7 +111,8 @@ namespace LuaFsm
         
         ImGui_ImplOpenGL3_Init("#version 410");
         ImGui_ImplGlfw_InitForOpenGL(GetNativeWindow(), true);
-        
+
+        //Add different font sizes
         AddFont("Cascadia_20",
             ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 20));
         AddFont("Cascadia_16",
@@ -127,20 +125,22 @@ namespace LuaFsm
         ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 10));
         AddFont("Cascadia_18",
             ImGui::GetIO().Fonts->AddFontFromFileTTF("assets/fonts/CascadiaCode.ttf", 18));
-        io.FontDefault = FONT = GetFont("Cascadia_18");
+        
+        io.FontDefault = MAIN_EDITOR_FONT = GetFont("Cascadia_18");
         NodeEditor::Get()->SetFont(GetFont("Cascadia_18"));
+
+        /*-----------------------------------------*\
+                  ImGuiNotify Icons Stuff 
+        \*-----------------------------------------*/
         constexpr float baseFontSize = 18.0f; // Default font size
         constexpr float iconFontSize = baseFontSize * 2.0f / 3.0f; // FontAwesome fonts need to have their sizes reduced by 2.0f/3.0f in order to align correctly
-
         // Check if FONT_ICON_FILE_NAME_FAS is a valid path
-
         if (const std::ifstream fontAwesomeFile(FONT_ICON_FILE_NAME_FAS); !fontAwesomeFile.good())
         {
             // If it's not good, then we can't find the font and should abort
             std::cerr << "Could not find the FontAwesome font file." << '\n';
             abort();
         }
-
         static constexpr ImWchar icons_ranges[] = {ICON_MIN_FA, ICON_MAX_16_FA, 0};
         ImFontConfig iconsConfig;
         iconsConfig.MergeMode = true;
@@ -148,9 +148,10 @@ namespace LuaFsm
         iconsConfig.GlyphMinAdvanceX = iconFontSize;
         AddFont("notificationFont",
             ImGui::GetIO().Fonts->AddFontFromFileTTF(FONT_ICON_FILE_NAME_FAS, iconFontSize, &iconsConfig, icons_ranges));
-
         
-
+        /*-----------------------------------------*\
+                    Set Text Editor colors
+        \*-----------------------------------------*/
         m_TextEditor = std::make_shared<TextEditor>();
         auto palette = m_TextEditor->GetPalette();
         palette.at(static_cast<int>(TextEditor::PaletteIndex::Background)) =
@@ -164,7 +165,46 @@ namespace LuaFsm
         m_TextEditor->SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
         m_Palette = palette;
         m_TextEditor->SetPalette(m_Palette);
+
+        //Default theme
         SetTheme("Green");
+        //Popups
+        InitializePopups();
+        
+    }
+    IM_MSVC_RUNTIME_CHECKS_RESTORE
+
+    void Window::InitializePopups()
+    {
+        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::AddFsmPopup), std::make_shared<AddFsmPopup>());
+        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::ThemeEditor), std::make_shared<ThemeEditor>());
+        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::LoadFile), std::make_shared<LoadFile>());
+        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::CreateFilePopup), std::make_shared<CreateFilePopup>());
+        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::AddStateMain), std::make_shared<AddStatePopup>("AddStateMain"));
+        
+        const auto addStateCursor = std::make_shared<AddStatePopup>("AddStateCursor");
+        addStateCursor->isDrawn = true;
+        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::AddStateCursor), addStateCursor);
+        
+        const auto pasteState = std::make_shared<AddStatePopup>("PasteState");
+        pasteState->isCopy = true;
+        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::PasteState), pasteState);
+        
+        const auto addTriggerCursor = std::make_shared<AddTriggerPopup>("AddTriggerCursor");
+        addTriggerCursor->isDrawn = true;
+        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::AddTriggerCursor), addTriggerCursor);
+        
+        const auto pasteTrigger = std::make_shared<AddTriggerPopup>("PasteTrigger");
+        pasteTrigger->isCopy = true;
+        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::PasteTrigger), pasteTrigger);
+    }
+    
+    void Window::OnUpdate() const
+    {
+        glfwPollEvents();
+        BeginImGui();
+        OnImGuiRender();
+        EndImGui();
     }
     
     void Window::BeginImGui()
@@ -172,25 +212,25 @@ namespace LuaFsm
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        ImGui::PushFont(FONT);
     }
-
     
     void Window::OnImGuiRender()
     {
+        ImGui::PushFont(MAIN_EDITOR_FONT); //Main editor font
         RenderNotifications();
         MainMenu();
         MainDockSpace();
         Canvas();
         Properties();
+        ImGui::PopFont(); //Main editor font
     }
     
     void Window::EndImGui() const
     {
-        // Rendering
-        ImGui::PopFont();
+        //actual window background color
         constexpr auto clearColor = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-        const ImGuiIO& io = ImGui::GetIO(); (void)io;
+        const ImGuiIO& io = ImGui::GetIO();
+        (void)io;
         ImGui::Render();
         GLFWwindow* window = glfwGetCurrentContext();
         int displayW, displayH;
@@ -213,350 +253,114 @@ namespace LuaFsm
     
     void Window::RenderNotifications()
     {
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 1.00f)); // Background color
-        ImGui::PushFont(m_Fonts["notificationFont"]);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 1.00f)); // Notification Background color
+        ImGui::PushFont(m_Fonts["notificationFont"]); // Notification Font
         ImGui::RenderNotifications();
-        ImGui::PopStyleColor(1);
-        ImGui::PopFont();
+        ImGui::PopStyleColor(); // Notification Background color
+        ImGui::PopFont(); // Notification Font
     }
+
+    ImVec4 INVISIBLE_COLOR = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
 
     void Window::MainMenu()
     {
-        const auto nodeEditor = NodeEditor::Get();
+        const auto fsm = NodeEditor::Get()->GetCurrentFsm();
+        const auto popupManager = GetPopupManager();
         if (ImGui::BeginMainMenuBar())
         {
+            /*-----------------------------*\
+                        File menu
+            \*-----------------------------*/
             if (ImGui::BeginMenu("File"))
             {
+                //New FSM
                 if (ImGui::MenuItem("New FSM"))
                 {
-                    ADD_FSM_POPUP = true;
+                    popupManager->OpenPopup(static_cast<int>(WindowPopups::AddFsmPopup));
+                    PROPERTIES_FIRST_TIME = true;
+                    FIRST_OPEN = true;
                 }
-                if (auto fsm = nodeEditor->GetCurrentFsm(); fsm && fsm->GetLinkedFile().empty() && ImGui::MenuItem("Create Lua File"))
-                {
-                    SELECT_FILE = true;
-                }
+
+                //Load FSM from Lua file
                 if (ImGui::MenuItem("Load"))
                 {
-                    LOAD_FILE = true;
+                    std::string current;
+                    if (fsm)
+                        current = fsm->GetId();
+                    popupManager->OpenPopup(static_cast<int>(WindowPopups::LoadFile));
+                    if (!current.empty() && NodeEditor::Get()->GetCurrentFsm() && current != NodeEditor::Get()->GetCurrentFsm()->GetId())
+                        FIRST_OPEN = true;
                 }
-                if (auto fsm = nodeEditor->GetCurrentFsm(); fsm && !fsm->GetLinkedFile().empty() && ImGui::MenuItem("Save"))
+
+                if (fsm)
                 {
-                    nodeEditor->GetCurrentFsm()->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
+                    const std::string linkedFile = fsm->GetLinkedFile();
+                    //Create Lua File
+                    if (linkedFile.empty() && ImGui::MenuItem("Create Lua File"))
+                        popupManager->OpenPopup(static_cast<int>(WindowPopups::CreateFilePopup));
+                    //Save to Lua File
+                    if (!linkedFile.empty() && ImGui::MenuItem("Save"))
+                        fsm->UpdateToFile(fsm->GetId());
                 }
                 ImGui::Separator();
+                //Exit
                 if (ImGui::MenuItem("Exit"))
-                {
                     SHUTDOWN = true;
-                }
                 ImGui::EndMenu();
             }
+            
+            /*-----------------------------*\
+                       Theme menu
+            \*-----------------------------*/
+            //Select theme
             if (ImGui::BeginMenu("Themes"))
             {
                 for (const auto& name : m_Themes | std::views::keys)
-                {
                     if (ImGui::MenuItem(name.c_str()))
-                    {
                         SetTheme(name);
-                    }
-                }
                 ImGui::EndMenu();
             }
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.2f, 0.0f));
+            //Edit theme
+            ImGui::PushStyleColor(ImGuiCol_Button, INVISIBLE_COLOR);
             if (ImGui::Button("Edit Theme"))
-                OPEN_THEME_EDITOR = !OPEN_THEME_EDITOR;
-            ImGui::PopStyleColor();
-            if (auto fsm = NodeEditor::Get()->GetCurrentFsm())
+                popupManager->OpenPopup(static_cast<int>(WindowPopups::ThemeEditor));
+            ImGui::PopStyleColor(); //INVISIBLE_COLOR
+            
+            
+            /*-----------------------------*\
+                      FSM Properties
+            \*-----------------------------*/
+            if (fsm)
             {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.2f, 0.0f));
+                //Show FSM properties
+                ImGui::PushStyleColor(ImGuiCol_Button, INVISIBLE_COLOR);
                 if (ImGui::Button("FSM Properties"))
-                    NodeEditor::Get()->DeselectAllNodes();
-                ImGui::PopStyleColor();
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.2f, 1.0f));
+                    NodeEditor::Get()->DeselectAllNodes(); //No nodes shows FSM properties
+                ImGui::PopStyleColor(); //INVISIBLE_COLOR
+
+                //Add a new state
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.2f, 1.0f)); //Green button
                 if (ImGui::Button("Add State"))
-                    ADD_STATE_POPUP = true;
-                ImGui::PopStyleColor();
-                ImGui::Text("Current FSM: ");
+                    popupManager->OpenPopup(static_cast<int>(WindowPopups::AddStateMain));
+                ImGui::PopStyleColor(); //Green button
+
+                //FSM name
+                ImGui::Text("FSM: ");
                 ImGui::Text(fsm->GetName().c_str());
             }
-            /*
-            * 
-            ImGui::Text("Scale: ");
-            ImGui::SameLine();
-            ImGui::Text("%.2f", nodeEditor->GetScale());
-             */
             ImGui::EndMainMenuBar();
         }
-        
-        if (OPEN_THEME_EDITOR)
-        {
-            ImGui::OpenPopup("Theme Editor");
-            OPEN_THEME_EDITOR = false;
-        }
-        
-        if (ImGui::BeginPopup("Theme Editor"))
-        {
-            if (!m_ActiveTheme.empty())
-            {
-                static std::string name = m_ActiveTheme;
-                static std::string lastActiveTheme = m_ActiveTheme;
-                static auto [standard, hovered, active, text, background, windowBg, themeName] = GetTheme(m_ActiveTheme);
-                if (m_ActiveTheme != lastActiveTheme)
-                {
-                    lastActiveTheme = m_ActiveTheme;
-                    standard = GetTheme(m_ActiveTheme).standard;
-                    hovered = GetTheme(m_ActiveTheme).hovered;
-                    active = GetTheme(m_ActiveTheme).active;
-                    text = GetTheme(m_ActiveTheme).text;
-                    background = GetTheme(m_ActiveTheme).background;
-                    windowBg = GetTheme(m_ActiveTheme).windowBg;
-                    name = m_ActiveTheme;
-                }
-                ImGui::ColorEdit4("standard", reinterpret_cast<float*>(&standard));
-                ImGui::ColorEdit4("hovered", reinterpret_cast<float*>(&hovered));
-                ImGui::ColorEdit4("active", reinterpret_cast<float*>(&active));
-                ImGui::ColorEdit4("text", reinterpret_cast<float*>(&text));
-                ImGui::ColorEdit4("background", reinterpret_cast<float*>(&background));
-                ImGui::ColorEdit4("windowBg", reinterpret_cast<float*>(&windowBg));
-                SetTheme({standard, hovered, active, text, background, windowBg, ""});
-                ImGui::InputText("Theme Name", &name);
-                if (!name.empty())
-                {
-                    if (ImGui::Button("Save"))
-                    {
-                        auto theme = ImGuiColorTheme{standard, hovered, active, text, background, windowBg, name};
-                        AddTheme(name, theme);
-                        SetTheme(name);
-                        auto json = theme.Serialize();
-                        std::ofstream file("assets/themes/" + name + ".json");
-                        file << json.dump(4);
-                        file.close();
-                        name = "";
-                    }
-                    ImGui::SameLine();
-                }
-                else
-                    ImGui::Text("Input a name to save the theme.");
-                if (ImGui::Button("Close"))
-                {
-                    SetTheme(m_ActiveTheme);
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::EndPopup();
-            }
-        }
-        
-        if (ADD_FSM_POPUP)
-        {
-            ImGui::OpenPopup("Add FSM");
-            ADD_FSM_POPUP = false;
-        }
-        
-        if (ImGui::BeginPopup("Add FSM"))
-        {
-            ImGui::Text("Add FSM");
-            static std::string fsmId;
-            ImGui::InputText("FSM ID", &fsmId, 0);
-            ImGui::SetItemTooltip("Unique identifier for the FSM. This is used as the global variable name in Lua.");
-            static std::string fsmName;
-            ImGui::InputText("FSM Name", &fsmName, 0);
-            ImGui::SetItemTooltip("Just for visual purposes in this editor.");
-            if (auto invalid = std::regex_search(fsmId, FsmRegex::InvalidIdRegex());
-                !fsmId.empty()
-                && !fsmName.empty()
-                && !invalid)
-            {
-                if (ImGui::Button("Add"))
-                {
-                    const auto fsm = std::make_shared<Fsm>(fsmId);
-                    fsm->SetName(fsmName);
-                    NodeEditor::Get()->SetCurrentFsm(fsm);
-                    NodeEditor::Get()->DeselectAllNodes();
-                    ImGui::CloseCurrentPopup();
-                    SELECT_FILE = true;
-                }
-                ImGui::SameLine();
-            }
-            else if (fsmId.empty())
-            {
-                ImGui::Text("FSM ID cannot be empty");
-            }
-            else if (fsmName.empty())
-            {
-                ImGui::Text("FSM Name cannot be empty");
-            }
-            else if (invalid)
-            {
-                ImGui::Text("Invalid FSM ID");
-            }
-            if (ImGui::Button("Cancel"))
-            {
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-        }
-        
-        if (LOAD_FILE)
-        {
-            ImGui::OpenPopup("Open File");
-            LOAD_FILE = false;
-        }
-        
-        if (ImGui::BeginPopup("Open File"))
-        {
-            static std::string filePath;
-            static std::string folder;
-            if (filePath.empty())
-            {
-                IGFD::FileDialogConfig config;
-                if (!LAST_OPEN_PATH.empty())
-                    config.filePathName = LAST_OPEN_PATH;
-                else if (!LAST_SAVE_PATH.empty())
-                    config.filePathName = LAST_SAVE_PATH;
-                else if (!LAST_PATH.empty())
-                    config.path = LAST_PATH;
-                else
-                    config.path = ".";
-                config.flags |= ImGuiWindowFlags_NoCollapse;
-                ImGuiFileDialog::Instance()->OpenDialog("loadLuaFile", "Choose File", ".lua", config);
-                if (ImGuiFileDialog::Instance()->Display("loadLuaFile", ImGuiWindowFlags_NoCollapse, ImVec2({600, 500}) )) {
-                    if (ImGuiFileDialog::Instance()->IsOk()) { // action if 
-                        folder = ImGuiFileDialog::Instance()->GetCurrentPath();
-                        filePath = folder + "/";
-                        filePath += ImGuiFileDialog::Instance()->GetCurrentFileName();
-                    }
-                    // close
-                    ImGuiFileDialog::Instance()->Close();
-                    ImGui::CloseCurrentPopup();
-                }
-                if (!filePath.empty())
-                {
-                    //deserialize file
-                    const auto fsm = Fsm::CreateFromFile(filePath);
-                    NodeEditor::Get()->DeselectAllNodes();
-                    LAST_OPEN_PATH = filePath;
-                    LAST_PATH = folder;
-                    folder = "";
-                    filePath = "";
-                }
-            }
-            ImGui::EndPopup();
-        }
-        
-        if (SELECT_FILE)
-        {
-            ImGui::OpenPopup("SelectFile");
-            SELECT_FILE = false;
-        }
-        
-        if (ImGui::BeginPopup("SelectFile"))
-        {
-            static std::string filePath;
-            static std::string folder;
-            if (!nodeEditor->GetCurrentFsm())
-            {
-                ImGui::CloseCurrentPopup();
-                ImGui::EndPopup();
-            }
-            if (filePath.empty())
-            {
-                IGFD::FileDialogConfig config;
-                if (!LAST_PATH.empty())
-                    config.path = LAST_PATH;
-                else
-                    config.path = ".";
-                config.fileName = nodeEditor->GetCurrentFsm()->GetId();
-                ImGuiFileDialog::Instance()->OpenDialog("ChooseLuaFile", "Save lua file", ".lua", config);
-                if (ImGuiFileDialog::Instance()->Display("ChooseLuaFile", ImGuiWindowFlags_NoCollapse, ImVec2({600, 500}) )) {
-                    if (ImGuiFileDialog::Instance()->IsOk()) { // action if 
-                        folder = ImGuiFileDialog::Instance()->GetCurrentPath();
-                        filePath = folder + "/";
-                        filePath += ImGuiFileDialog::Instance()->GetCurrentFileName();
-                    }
-                    // close
-                    ImGuiFileDialog::Instance()->Close();
-                    ImGui::CloseCurrentPopup();
-                }
-                if (!filePath.empty())
-                {
-                    const auto code = nodeEditor->GetCurrentFsm()->GetLuaCode();
-                    std::ofstream file(filePath);
-                    if (!file.is_open())
-                    {
-                        ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Failed to export file at: %s", filePath.c_str()});
-                        return;
-                    }
-                    file << code;
-                    file.close();
-                    nodeEditor->GetCurrentFsm()->SetLinkedFile(filePath);
-                    LAST_SAVE_PATH = filePath;
-                    LAST_PATH = folder;
-                    folder = "";
-                    filePath = "";
-                }
-            }
-            ImGui::EndPopup();
-        }
 
-        if (ADD_STATE_POPUP)
-        {
-            ImGui::OpenPopup("Add State");
-            ADD_STATE_POPUP = false;
-        }
-
-        if (ImGui::BeginPopup("Add State"))
-        {
-            ImGui::Text("Add State");
-            static std::string stateId;
-            ImGui::InputText("State ID", &stateId, 0);
-            ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
-            static std::string stateName;
-            ImGui::InputText("State Name", &stateName, 0);
-            if (auto invalid = std::regex_search(stateId, FsmRegex::InvalidIdRegex());
-                !nodeEditor->GetCurrentFsm()->GetState(stateId)
-                && !nodeEditor->GetCurrentFsm()->GetTrigger(stateId)
-                && !stateId.empty()
-                && !stateName.empty()
-                && !invalid)
-            {
-                if (ImGui::Button("Add"))
-                {
-                    const auto state = std::make_shared<FsmState>(stateId);
-                    state->SetName(stateName);
-                    nodeEditor->GetCurrentFsm()->AddState(state);
-                    ImGui::SetClipboardText(state->GetLuaCode().c_str());
-                    state->AppendToFile();
-                    ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", stateId.c_str()});
-                    ImGui::CloseCurrentPopup();
-                }
-                ImGui::SameLine();
-            }
-            else if (nodeEditor->GetCurrentFsm()->GetState(stateId) || nodeEditor->GetCurrentFsm()->GetTrigger(stateId))
-            {
-                ImGui::Text("State ID already exists");
-            }
-            else if (stateId.empty())
-            {
-                ImGui::Text("State ID cannot be empty");
-            }
-            else if (stateName.empty())
-            {
-                ImGui::Text("State Name cannot be empty");
-            }
-            else if (invalid)
-            {
-                ImGui::Text("Invalid State ID");
-            }
-            if (ImGui::Button("Cancel"))
-            {
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-        }
+        //Open popups
+        popupManager->ShowOpenPopups(); 
     }
-    ImVec2 CANVAS_POS{};
-    ImVec2 CANVAS_SIZE{};
-    ImVec2 CANVAS_CONTENT_MIN{};
-    ImVec2 CANVAS_CONTENT_MAX{};
+    
+    uint32_t MAIN_DOCK_FLAGS =
+        ImGuiWindowFlags_NoCollapse
+        | ImGuiWindowFlags_NoTitleBar
+        | ImGuiWindowFlags_NoMove
+        | ImGuiWindowFlags_NoBringToFrontOnFocus
+        | ImGuiWindowFlags_NoResize;
 
     void Window::MainDockSpace()
     {
@@ -568,26 +372,9 @@ namespace LuaFsm
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         // Main window encompassing all elements
-        ImGui::Begin("Node Editor", &MAIN_DOCK_OPENED,
-            ImGuiWindowFlags_NoCollapse
-            | ImGuiWindowFlags_MenuBar
-            | ImGuiWindowFlags_NoTitleBar
-            | ImGuiWindowFlags_NoMove
-            | ImGuiWindowFlags_NoBringToFrontOnFocus
-            | ImGuiWindowFlags_NoResize);
+        ImGui::Begin("Node Editor", &MAIN_DOCK_OPENED, MAIN_DOCK_FLAGS);
         {
-            ImGui::PopStyleVar();
-            /* 
-            if (ImGui::BeginMenuBar())
-            {
-                const auto nodeEditor = NodeEditor::Get();
-                ImGui::Text("Canvas pos: %.1f, %.1f", nodeEditor->GetCanvasPos().x, nodeEditor->GetCanvasPos().y);
-                ImGui::Text("Canvas size: %.1f, %.1f", nodeEditor->GetCanvasSize().x, nodeEditor->GetCanvasSize().y);
-                ImGui::Text("Canvas min: %.1f, %.1f", CANVAS_CONTENT_MIN.x, CANVAS_CONTENT_MIN.y);
-                ImGui::Text("Canvas max: %.1f, %.1f", CANVAS_CONTENT_MAX.x, CANVAS_CONTENT_MAX.y);
-                ImGui::Text("mouse pos: %.1f, %.1f", ImGui::GetMousePos().x, ImGui::GetMousePos().y);
-                ImGui::EndMenuBar();
-            }*/
+            ImGui::PopStyleVar(); //ImGuiStyleVar_WindowPadding
             
             // Dock space setup
             ImGuiID dockspaceId = ImGui::GetID("NodeEditorDockspace");
@@ -595,7 +382,7 @@ namespace LuaFsm
             if (!DOCK_SPACE_SET)
             {
                 ImGui::DockBuilderRemoveNode(dockspaceId); // Clear out existing layout
-                ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_None); // Add a new node
+                ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_None);
                 ImGui::DockBuilderSetNodeSize(dockspaceId, mainViewport->Size);
 
                 const ImGuiID dockIdLeft = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.75f, nullptr, &dockspaceId);
@@ -611,221 +398,82 @@ namespace LuaFsm
         }
     }
 
-    float MOUSE_SCROLL = 0;
-    bool firstOpen = true;
-    ImVec2 lastScroll = {0, 0};
     
+    ImVec2 CANVAS_POS{};
+    ImVec2 CANVAS_SIZE{};
+    float MOUSE_SCROLL = 0;
+    bool CANVAS_OPEN = true;
+    uint32_t CANVAS_FLAGS =
+        ImGuiWindowFlags_NoBringToFrontOnFocus
+        | ImGuiWindowFlags_NoScrollbar
+        | ImGuiWindowFlags_NoScrollWithMouse
+        | ImGuiWindowFlags_NoMove;
+
+    ImVec2 CANVAS_FULL_SIZE = {4096, 4096};
+    
+    // Canvas window
     void Window::Canvas()
     {
         const auto nodeEditor = NodeEditor::Get();
+        const auto fsm = nodeEditor->GetCurrentFsm();
+        if (!fsm)
+            return;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        // Canvas window
-        ImGui::SetNextWindowContentSize({4096, 4096});
-        ImGui::PushFont(nodeEditor->GetFont());
-        ImGui::Begin("Canvas", nullptr,
-            ImGuiWindowFlags_NoBringToFrontOnFocus
-            | ImGuiWindowFlags_NoScrollbar
-            | ImGuiWindowFlags_NoScrollWithMouse
-            | ImGuiWindowFlags_NoMove
-            );
-        if (!NodeEditor::Get()->GetCurrentFsm())
+        
+        //Size of the canvas
+        ImGui::SetNextWindowContentSize(CANVAS_FULL_SIZE);
+        ImGui::PushFont(nodeEditor->GetFont()); //Node font
+        ImGui::Begin("Canvas", &CANVAS_OPEN, CANVAS_FLAGS);
         {
-            ImGui::PopStyleVar();
-            ImGui::End();
-        }
-        else
-        {
-            if (firstOpen)
+            //Handle initial canvas position
+            if (FIRST_OPEN)
             {
-                ImGui::SetScrollX(1024);
-                ImGui::SetScrollY(1024);
-                //lastScroll = ImVec2(1024, 1024);
-                firstOpen = false;
-            }
-            if (ImGui::IsWindowHovered() || ImGui::IsWindowFocused())
-            {
-                if (ImGui::IsKeyPressed(ImGuiKey_S)
-                && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
-                {
-                    if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
-                        nodeEditor->GetCurrentFsm()->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
-                }
-                if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
-                {
-                    MOUSE_SCROLL = ImGui::GetIO().MouseWheel * 0.025;
-                    nodeEditor->SetScale(std::min(1.5f, std::max(nodeEditor->GetScale() + MOUSE_SCROLL, 0.5f)));
-                }
+                //Center canvas on nodes when loading
+                if (fsm->GetInitialState())
+                    nodeEditor->MoveToNode(fsm->GetInitialStateId());
                 else
                 {
-                    MOUSE_SCROLL = 0;
+                    ImGui::SetScrollX(1024);
+                    ImGui::SetScrollY(1024);
                 }
-                if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
-                {
-                    const ImVec2 delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
-                    ImGui::SetScrollX(ImGui::GetScrollX() - delta.x);
-                    ImGui::SetScrollY(ImGui::GetScrollY() - delta.y);
-                    ImGui::ResetMouseDragDelta(ImGuiMouseButton_Middle);
-                }
-                if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
-                {
-                    if (auto existingCurveNode = nodeEditor->GetCurveNode(); !existingCurveNode)
-                    {
-                        const auto fsm = nodeEditor->GetCurrentFsm();
-                        const auto pressPos = ImGui::GetMousePos();
-                        float smallestDist = 40;
-                        VisualNode* curveNode = nullptr;
-                        bool isInLine = false;
-                        for (const auto& [key, condition] : fsm->GetTriggers())
-                        {
-                            if (Math::Distance(pressPos, condition->GetNode()->GetInLineMidPoint()) < smallestDist)
-                            {
-                                smallestDist = Math::Distance(pressPos, condition->GetNode()->GetInLineMidPoint());
-                                curveNode = condition->GetNode();
-                                isInLine = true;
-                            }
-                            if (Math::Distance(pressPos, condition->GetNode()->GetOutLineMidPoint()) < smallestDist)
-                            {
-                                smallestDist = Math::Distance(pressPos, condition->GetNode()->GetOutLineMidPoint());
-                                curveNode = condition->GetNode();
-                                isInLine = false;
-                            }
-                        }
-                        if (curveNode)
-                        {
-                            ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
-                            nodeEditor->SetCurveNode(curveNode);
-                            if (isInLine)
-                            {
-                                nodeEditor->SetSettingInCurve(true);
-                                nodeEditor->SetSettingOutCurve(false);
-                            }
-                            else
-                            {
-                                nodeEditor->SetSettingInCurve(false);
-                                nodeEditor->SetSettingOutCurve(true);
-                            }
-                        }
-                    }
-                    else if (ImGui::IsMouseDragging(ImGuiMouseButton_Left))
-                    {
-                        //Literally trial and error no clue why this works
-                        if (const auto trigger = nodeEditor->GetCurrentFsm()->GetTrigger(existingCurveNode->GetId()))
-                        {
-                            if (nodeEditor->IsSettingInCurve())
-                            {
-                                auto newCurve = existingCurveNode->GetInArrowCurve();
-                                if (const auto toState = trigger->GetCurrentState())
-                                {
-                                    const auto statePos = toState->GetNode()->GetGridPos();
-                                    if ( statePos.y < existingCurveNode->GetGridPos().y)
-                                    {
-                                        if (statePos.x > existingCurveNode->GetGridPos().x)
-                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
-                                        else
-                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
-                                    }
-                                    else
-                                    {
-                                        if (statePos.x < existingCurveNode->GetGridPos().x)
-                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
-                                        else
-                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
-                                    }
-                                    if (statePos.x > existingCurveNode->GetGridPos().x)
-                                    {
-                                        if (statePos.y < existingCurveNode->GetGridPos().y)
-                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
-                                        else
-                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
-                                    }
-                                    else
-                                    {
-                                        if (statePos.y > existingCurveNode->GetGridPos().y)
-                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
-                                        else
-                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
-                                    }
-                                    newCurve = std::max(-1.0f, std::min(1.0f, newCurve));
-                                    existingCurveNode->SetInArrowCurve(newCurve);
-                                }
-                            }
-                            if (nodeEditor->IsSettingOutCurve())
-                            {
-                                auto newCurve = existingCurveNode->GetOutArrowCurve();
-                                if (const auto fromState = trigger->GetNextState())
-                                {
-                                    const auto statePos = fromState->GetNode()->GetGridPos();
-                                    if ( statePos.y < existingCurveNode->GetGridPos().y)
-                                    {
-                                        if (statePos.x < existingCurveNode->GetGridPos().x)
-                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
-                                        else
-                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
-                                    }
-                                    else
-                                    {
-                                        if (statePos.x > existingCurveNode->GetGridPos().x)
-                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
-                                        else
-                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
-                                    }
-                                    if (statePos.x > existingCurveNode->GetGridPos().x)
-                                    {
-                                        if (statePos.y > existingCurveNode->GetGridPos().y)
-                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
-                                        else
-                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
-                                    }
-                                    else
-                                    {
-                                        if (statePos.y < existingCurveNode->GetGridPos().y)
-                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
-                                        else
-                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
-                                    }
-                                    newCurve = std::max(-1.0f, std::min(1.0f, newCurve));
-                                    existingCurveNode->SetOutArrowCurve(newCurve);
-                                }
-                            }
-                            ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
-                        }
-                    }
-                }
-                else
-                {
-                    nodeEditor->SetCurveNode(nullptr);
-                    nodeEditor->SetSettingInCurve(false);
-                    nodeEditor->SetSettingOutCurve(false);
-                }
+                FIRST_OPEN = false;
             }
-            else
-            {
-                nodeEditor->SetCurveNode(nullptr);
-                nodeEditor->SetSettingInCurve(false);
-                nodeEditor->SetSettingOutCurve(false);
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_F4))
-            {
-                if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
-                    nodeEditor->GetCurrentFsm()->UpdateFromFile(nodeEditor->GetCurrentFsm()->GetLinkedFile());
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_F5))
-            {
-                if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
-                    nodeEditor->GetCurrentFsm()->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
-            }
-            nodeEditor->SetCanvasPos(Math::AddVec2(ImGui::GetWindowPos(), ImGui::GetWindowContentRegionMin()));
-            nodeEditor->SetCanvasSize(ImGui::GetWindowSize());
+            
+            //Handle key binds
+            CanvasKeyBindManager();
+            
             CANVAS_POS = ImGui::GetWindowPos();
             CANVAS_SIZE = ImGui::GetWindowSize();
-            CANVAS_CONTENT_MIN = ImGui::GetWindowContentRegionMin();
-            CANVAS_CONTENT_MAX = ImGui::GetWindowContentRegionMax();
-            ImGui::SetWindowFontScale(nodeEditor->GetScale());
-            for (const auto& [key, state] : nodeEditor->GetCurrentFsm()->GetStates())
+            nodeEditor->SetCanvasPos(CANVAS_POS);
+            nodeEditor->SetCanvasSize(CANVAS_SIZE);
+            /*-------------------------------------------------------------------------------------------------------*\
+                                                           Draw Nodes
+            \*-------------------------------------------------------------------------------------------------------*/
+            ImGui::SetWindowFontScale(nodeEditor->GetScale()); //Node size is directly related to font scale
+            
+            //Draw states
+            for (const auto& [key, state] : fsm->GetStates())
                 state->DrawNode();
-            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)
-                //&& (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) || ImGui::IsWindowFocused())
-                && nodeEditor->IsDragging())
+            
+            //Draw transitions
+            for (const auto& [key, trigger] : fsm->GetTriggers())
+            {
+                trigger->DrawNode();
+                //Draw connections
+                if (trigger->GetCurrentState())
+                {
+                    if (const auto currentState = trigger->GetCurrentState()->GetNode())
+                        NodeEditor::DrawConnection(currentState, trigger->GetNode());
+                }
+                if (trigger->GetNextState())
+                {
+                    if (const auto nextState = trigger->GetNextState()->GetNode())
+                        NodeEditor::DrawConnection(trigger->GetNode(), nextState);
+                }
+            }
+
+            //Drag nodes
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && nodeEditor->IsDragging())
             {
                 if (const auto selectedNode = nodeEditor->GetSelectedNode(); selectedNode)
                 {
@@ -839,27 +487,9 @@ namespace LuaFsm
                 }
             }
             else
-            {
                 nodeEditor->SetDragging(false);
-            }
-            for (const auto& [key, trigger] : nodeEditor->GetCurrentFsm()->GetTriggers())
-            {
-                trigger->DrawNode();
-                if (trigger->GetCurrentState())
-                {
-                    if (const auto currentState = trigger->GetCurrentState()->GetNode())
-                    {
-                        NodeEditor::DrawConnection(currentState, trigger->GetNode());
-                    }
-                }
-                if (trigger->GetNextState())
-                {
-                    if (const auto nextState = trigger->GetNextState()->GetNode())
-                    {
-                        NodeEditor::DrawConnection(trigger->GetNode(), nextState);
-                    }
-                }
-            }
+
+            //Paste node
             if (nodeEditor->GetCopiedNode() && ImGui::IsKeyPressed(ImGuiKey_V) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
             {
                 CURSOR_POS = ImGui::GetMousePos() - CANVAS_POS + ImVec2{ImGui::GetScrollX(), ImGui::GetScrollY()} / nodeEditor->GetScale();
@@ -867,16 +497,22 @@ namespace LuaFsm
                 {
                     case NodeType::State:
                     {
-                        PASTE_NEW_STATE_AT_CURSOR = true;
+                        const auto popup = dynamic_cast<AddStatePopup*>(GetPopupManager()->GetPopup(static_cast<int>(WindowPopups::PasteState)).get());
+                        popup->position = CURSOR_POS;
+                        popup->Open();
                         break;
                     }
                     case NodeType::Transition:
                     {
-                        PASTE_NEW_TRIGGER_AT_CURSOR = true;
+                        const auto popup = dynamic_cast<AddTriggerPopup*>(GetPopupManager()->GetPopup(static_cast<int>(WindowPopups::PasteTrigger)).get());
+                        popup->position = CURSOR_POS;
+                        popup->Open();
                         break;
                     }
                 }
             }
+
+            //Draw lines for creating links
             if (const auto selectedNode = nodeEditor->GetSelectedNode();
                 selectedNode && ImGui::IsWindowHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Right))
             {
@@ -889,299 +525,275 @@ namespace LuaFsm
                     NodeEditor::Get()->SetCreatingLink(true);
                 }
             }
-            else if (ImGui::IsWindowHovered(ImGuiHoveredFlags_Stationary) && !ImGui::IsMouseDown(ImGuiMouseButton_Right) && NodeEditor::Get()->IsCreatingLink())
+            //Drawing finished
+            if (NodeEditor::Get()->IsCreatingLink() && ImGui::IsWindowHovered() && !ImGui::IsMouseDown(ImGuiMouseButton_Right))
             {
-                
-                if (const auto otherNode = nodeEditor->GetSelectedNode(); otherNode)
+                if (const auto parentNode = nodeEditor->GetSelectedNode(); parentNode)
                 {
                     CURSOR_POS = ImGui::GetMousePos() - CANVAS_POS + ImVec2{ImGui::GetScrollX(), ImGui::GetScrollY()} / nodeEditor->GetScale();
-                    switch (otherNode->GetType())
+                    switch (parentNode->GetType())
                     {
                         case NodeType::State:
                         {
-                                ADD_NEW_TRIGGER_AT_CURSOR = true;
-                                break;
+                            const auto popup = dynamic_cast<AddTriggerPopup*>(GetPopupManager()->GetPopup(static_cast<int>(WindowPopups::AddTriggerCursor)).get());
+                            popup->position = CURSOR_POS;
+                            popup->Open();
+                            break;
                         }
                         case NodeType::Transition:
                         {
-                                ADD_NEW_STATE_AT_CURSOR = true;
+                            const auto popup = dynamic_cast<AddStatePopup*>(GetPopupManager()->GetPopup(static_cast<int>(WindowPopups::AddStateCursor)).get());
+                            popup->position = CURSOR_POS;
+                            popup->Open();
                             break;
                         }
                     }
                 }
-                NodeEditor::Get()->SetCreatingLink(false);
+                nodeEditor->SetCreatingLink(false);
             }
-            else if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
-                NodeEditor::Get()->SetCreatingLink(false);
-            ImGui::PopStyleVar();
             
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
+                nodeEditor->SetCreatingLink(false);
+            
+            ImGui::PopStyleVar(); //ImGuiStyleVar_WindowPadding
             ImGui::SetWindowFontScale(1.0f);
             
-            if (ADD_NEW_STATE_AT_CURSOR)
-            {
-                ImGui::OpenPopup("Add State At Cursor");
-                ADD_NEW_STATE_AT_CURSOR = false;
-            }
-
-            if (ADD_NEW_TRIGGER_AT_CURSOR)
-            {
-                ImGui::OpenPopup("Add Trigger At Cursor");
-                ADD_NEW_TRIGGER_AT_CURSOR = false;
-            }
+            GetPopupManager()->ShowOpenPopups();
             
-            if (PASTE_NEW_STATE_AT_CURSOR)
-            {
-                ImGui::OpenPopup("Paste State At Cursor");
-                PASTE_NEW_STATE_AT_CURSOR = false;
-            }
-
-            if (PASTE_NEW_TRIGGER_AT_CURSOR)
-            {
-                ImGui::OpenPopup("Paste Trigger At Cursor");
-                PASTE_NEW_TRIGGER_AT_CURSOR = false;
-            }
-
-            if (ImGui::BeginPopup("Add State At Cursor"))
-            {
-                if (const auto fromNode = NodeEditor::Get()->GetSelectedNode(); fromNode && fromNode->GetType() == NodeType::Transition)
-                {
-                    static std::string id;
-                    ImGui::InputText("New State ID", &id);
-                    ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
-                    static std::string name;
-                    ImGui::InputText("New State Name", &name);
-                    if (const auto invalid = std::regex_search(id, FsmRegex::InvalidIdRegex());
-                        !invalid &&
-                        !id.empty() && !name.empty()
-                        && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
-                        && !NodeEditor::Get()->GetCurrentFsm()->GetState(id) && ImGui::Button("Add State"))
-                    {
-                        const auto state = NodeEditor::Get()->GetCurrentFsm()->AddState(id);
-                        state->GetNode()->SetGridPos(CURSOR_POS);
-                        state->SetName(name);
-                        const auto trigger = NodeEditor::Get()->GetCurrentFsm()->GetTrigger(fromNode->GetId());
-                        trigger->SetNextState(state->GetId());
-                        ImGui::SetClipboardText(state->GetLuaCode().c_str());
-                        state->AppendToFile();
-                        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", id.c_str()});
-                        name = "";
-                        id = "";
-                        ImGui::CloseCurrentPopup();
-                    }
-                    else if (id.empty())
-                    {
-                        ImGui::Text("ID can not be empty.");
-                    }
-                    else if (name.empty())
-                    {
-                        ImGui::Text("Name can not be empty.");
-                    }
-                    else if (NodeEditor::Get()->GetCurrentFsm()->GetState(id))
-                    {
-                        ImGui::Text("State with ID already exists.");
-                    }
-                    else if (invalid)
-                    {
-                        ImGui::Text("Invalid State ID");
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("Cancel"))
-                    {
-                        ImGui::CloseCurrentPopup();
-                    }
-                }
-                ImGui::EndPopup();
-            }
-
-            if (ImGui::BeginPopup("Paste State At Cursor"))
-            {
-                if (const auto copiedNode = NodeEditor::Get()->GetCopiedNode();
-                    copiedNode && copiedNode->GetType() == NodeType::State
-                    && NodeEditor::Get()->GetCurrentFsm()->GetState(copiedNode->GetId())
-                    )
-                {
-                    static std::string id;
-                    ImGui::InputText("New State ID", &id);
-                    ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
-                    if (const auto invalid = std::regex_search(id, FsmRegex::InvalidIdRegex());
-                        !invalid &&!id.empty()
-                        && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
-                        && !NodeEditor::Get()->GetCurrentFsm()->GetState(id)
-                        && ImGui::Button("Add State"))
-                    {
-                        const auto originalState = NodeEditor::Get()->GetCurrentFsm()->GetState(copiedNode->GetId());
-                        const auto state = NodeEditor::Get()->GetCurrentFsm()->AddState(id);
-                        state->SetName(originalState->GetName());
-                        state->SetOnEnter(originalState->GetOnEnter());
-                        state->SetOnUpdate(originalState->GetOnUpdate());
-                        state->SetOnExit(originalState->GetOnExit());
-                        state->SetDescription(originalState->GetDescription());
-                        state->GetNode()->SetGridPos(CURSOR_POS);
-                        ImGui::SetClipboardText(state->GetLuaCode().c_str());
-                        state->AppendToFile();
-                        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", id.c_str()});
-                        id = "";
-                        ImGui::CloseCurrentPopup();
-                    }
-                    else if (id.empty())
-                    {
-                        ImGui::Text("ID can not be empty.");
-                    }
-                    else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id) || NodeEditor::Get()->GetCurrentFsm()->GetState(id))
-                    {
-                        ImGui::Text("State with ID already exists.");
-                    }
-                    else if (invalid)
-                    {
-                        ImGui::Text("Invalid State ID");
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("Cancel"))
-                    {
-                        ImGui::CloseCurrentPopup();
-                    }
-                }
-                ImGui::EndPopup();
-            }
-
-            if (ImGui::BeginPopup("Paste Trigger At Cursor"))
-            {
-                if (const auto copiedNode = NodeEditor::Get()->GetCopiedNode();
-                    copiedNode && copiedNode->GetType() == NodeType::Transition
-                    && NodeEditor::Get()->GetCurrentFsm()->GetTrigger(copiedNode->GetId())
-                    )
-                {
-                    static std::string id;
-                    ImGui::InputText("New Trigger ID", &id);
-                    ImGui::SetItemTooltip("Used for internal identification and must be unique. Changing this requires refactor.");
-                    if (const auto invalid = std::regex_search(id, FsmRegex::InvalidIdRegex());
-                        !invalid && !id.empty()
-                        && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
-                        && !NodeEditor::Get()->GetCurrentFsm()->GetState(id)
-                        && ImGui::Button("Add Condition"))
-                    {
-                        const auto originalCondition = NodeEditor::Get()->GetCurrentFsm()->GetTrigger(copiedNode->GetId());
-                        const auto condition = std::make_shared<FsmTrigger>(id);
-                        NodeEditor::Get()->GetCurrentFsm()->AddTrigger(condition);
-                        condition->SetName(originalCondition->GetName());
-                        condition->SetDescription(originalCondition->GetDescription());
-                        condition->SetCondition(originalCondition->GetCondition());
-                        condition->SetAction(originalCondition->GetAction());
-                        condition->GetNode()->SetGridPos(CURSOR_POS);
-                        ImGui::SetClipboardText(condition->GetLuaCode().c_str());
-                        condition->AppendToFile();
-                        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "State added: %s, code copied to clipboard", id.c_str()});
-                        id = "";
-                        ImGui::CloseCurrentPopup();
-                    }
-                    else if (id.empty())
-                    {
-                        ImGui::Text("ID can not be empty.");
-                    }
-                    else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id) || NodeEditor::Get()->GetCurrentFsm()->GetState(id))
-                    {
-                        ImGui::Text("Condition with ID already exists.");
-                    }
-                    else if (invalid)
-                    {
-                        ImGui::Text("Invalid Condition ID");
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("Cancel"))
-                    {
-                        ImGui::CloseCurrentPopup();
-                    }
-                }
-                ImGui::EndPopup();
-            }
-
-            if (ImGui::BeginPopup("Add Trigger At Cursor"))
-            {
-                if (const auto fromNode = NodeEditor::Get()->GetSelectedNode(); fromNode && fromNode->GetType() == NodeType::State)
-                {
-                    static std::string id;
-                    ImGui::InputText("New Trigger ID", &id);
-                    ImGui::SetItemTooltip("Used for internal identification and must be unique. Be careful with choosing if you change it later you will need to refactor your lua code to maintain loading ability.");
-                    static std::string name;
-                    ImGui::InputText("New Trigger Name", &name);
-                    if (const auto invalid = std::regex_search(id, FsmRegex::InvalidIdRegex());
-                        !invalid &&
-                        !id.empty() && !name.empty()
-                        && !NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id)
-                        && !NodeEditor::Get()->GetCurrentFsm()->GetState(id)
-                        && ImGui::Button("Add Trigger"))
-                    {
-                        const auto state = NodeEditor::Get()->GetCurrentFsm()->GetState(fromNode->GetId());
-                        const auto trigger = state->AddTrigger(id);
-                        nodeEditor->GetCurrentFsm()->AddTrigger(trigger);
-                        trigger->GetNode()->SetGridPos(CURSOR_POS);
-                        ImGui::SetClipboardText(trigger->GetLuaCode().c_str());
-                        ImGui::InsertNotification({ImGuiToastType::Success, 3000, "Condition added: %s, code copied to clipboard", id.c_str()});
-                        trigger->SetName(name);
-                        trigger->AppendToFile();
-                        name = "";
-                        id = "";
-                        ImGui::CloseCurrentPopup();
-                    }
-                    else if (id.empty())
-                    {
-                        ImGui::Text("ID can not be empty.");
-                    }
-                    else if (name.empty())
-                    {
-                        ImGui::Text("Name can not be empty.");
-                    }
-                    else if (NodeEditor::Get()->GetCurrentFsm()->GetTrigger(id))
-                    {
-                        ImGui::Text("Trigger with ID already exists.");
-                    }
-                    else if (invalid)
-                    {
-                        ImGui::Text("Invalid Trigger ID");
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("Cancel"))
-                    {
-                        ImGui::CloseCurrentPopup();
-                    }
-                }
-                ImGui::EndPopup();
-            }
             ImGui::End();
         }
-        ImGui::PopFont();
+        ImGui::PopFont(); //Node font
     }
 
+    void Window::CanvasKeyBindManager()
+    {
+        const auto nodeEditor = NodeEditor::Get();
+        if (!ImGui::IsWindowHovered() && !ImGui::IsWindowFocused())
+        {
+            nodeEditor->SetCurveNode(nullptr);
+            nodeEditor->SetSettingInCurve(false);
+            nodeEditor->SetSettingOutCurve(false);
+            MOUSE_SCROLL = 0;
+            return;
+        }
+        
+        //Save Ctrl + S
+        if (ImGui::IsKeyPressed(ImGuiKey_S) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+        {
+            if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
+                nodeEditor->GetCurrentFsm()->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
+        }
+
+        //Zoom Ctrl + Mouse Scroll
+        if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+        {
+            MOUSE_SCROLL = ImGui::GetIO().MouseWheel * 0.025f;
+            nodeEditor->SetScale(std::min(1.5f, std::max(nodeEditor->GetScale() + MOUSE_SCROLL, 0.5f)));
+        }
+        else
+            MOUSE_SCROLL = 0;
+
+        //Pan Middle Mouse Drag
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
+        {
+            const ImVec2 delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
+            ImGui::SetScrollX(ImGui::GetScrollX() - delta.x);
+            ImGui::SetScrollY(ImGui::GetScrollY() - delta.y);
+            ImGui::ResetMouseDragDelta(ImGuiMouseButton_Middle);
+        }
+
+        //Drag arrow curves
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+        {
+            if (const auto existingCurveNode = nodeEditor->GetCurveNode(); !existingCurveNode)
+            {
+                const auto pressPos = ImGui::GetMousePos();
+                float smallestDist = 40;
+                VisualNode* curveNode = nullptr;
+                bool isInLine = false;
+                for (const auto& [key, condition] : nodeEditor->GetCurrentFsm()->GetTriggers())
+                {
+                    if (Math::Distance(pressPos, condition->GetNode()->GetInLineMidPoint()) < smallestDist)
+                    {
+                        smallestDist = Math::Distance(pressPos, condition->GetNode()->GetInLineMidPoint());
+                        curveNode = condition->GetNode();
+                        isInLine = true;
+                    }
+                    if (Math::Distance(pressPos, condition->GetNode()->GetOutLineMidPoint()) < smallestDist)
+                    {
+                        smallestDist = Math::Distance(pressPos, condition->GetNode()->GetOutLineMidPoint());
+                        curveNode = condition->GetNode();
+                        isInLine = false;
+                    }
+                }
+                if (curveNode)
+                {
+                    ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
+                    nodeEditor->SetCurveNode(curveNode);
+                    if (isInLine)
+                    {
+                        nodeEditor->SetSettingInCurve(true);
+                        nodeEditor->SetSettingOutCurve(false);
+                    }
+                    else
+                    {
+                        nodeEditor->SetSettingInCurve(false);
+                        nodeEditor->SetSettingOutCurve(true);
+                    }
+                }
+            }
+            else if (ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+                DragArrows(existingCurveNode);
+        }
+        else //mouse left not down
+        {
+            nodeEditor->SetCurveNode(nullptr);
+            nodeEditor->SetSettingInCurve(false);
+            nodeEditor->SetSettingOutCurve(false);
+        }
+        
+        //Load F4
+        if (ImGui::IsKeyPressed(ImGuiKey_F4))
+        {
+            if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
+                nodeEditor->GetCurrentFsm()->UpdateFromFile(nodeEditor->GetCurrentFsm()->GetLinkedFile());
+        }
+        
+        //Save F5
+        if (ImGui::IsKeyPressed(ImGuiKey_F5))
+        {
+            if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
+                nodeEditor->GetCurrentFsm()->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
+        }
+    }
+
+    void Window::DragArrows(VisualNode* existingCurveNode)
+    {
+        const auto nodeEditor = NodeEditor::Get();
+        //Literally trial and error no clue why this works
+        if (const auto trigger = nodeEditor->GetCurrentFsm()->GetTrigger(existingCurveNode->GetId()))
+        {
+            constexpr int dragSlowDown = 350;
+            if (nodeEditor->IsSettingInCurve())
+            {
+                auto newCurve = existingCurveNode->GetInArrowCurve();
+                if (const auto toState = trigger->GetCurrentState())
+                {
+                    const auto statePos = toState->GetNode()->GetGridPos();
+                    if ( statePos.y < existingCurveNode->GetGridPos().y)
+                    {
+                        if (statePos.x > existingCurveNode->GetGridPos().x)
+                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / dragSlowDown;
+                        else
+                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / dragSlowDown;
+                    }
+                    else
+                    {
+                        if (statePos.x < existingCurveNode->GetGridPos().x)
+                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / dragSlowDown;
+                        else
+                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / dragSlowDown;
+                    }
+                    if (statePos.x > existingCurveNode->GetGridPos().x)
+                    {
+                        if (statePos.y < existingCurveNode->GetGridPos().y)
+                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / dragSlowDown;
+                        else
+                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / dragSlowDown;
+                    }
+                    else
+                    {
+                        if (statePos.y > existingCurveNode->GetGridPos().y)
+                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / dragSlowDown;
+                        else
+                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / dragSlowDown;
+                    }
+                    newCurve = std::max(-1.0f, std::min(1.0f, newCurve));
+                    existingCurveNode->SetInArrowCurve(newCurve);
+                }
+            }
+            if (nodeEditor->IsSettingOutCurve())
+            {
+                auto newCurve = existingCurveNode->GetOutArrowCurve();
+                if (const auto fromState = trigger->GetNextState())
+                {
+                    const auto statePos = fromState->GetNode()->GetGridPos();
+                    if ( statePos.y < existingCurveNode->GetGridPos().y)
+                    {
+                        if (statePos.x < existingCurveNode->GetGridPos().x)
+                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / dragSlowDown;
+                        else
+                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / dragSlowDown;
+                    }
+                    else
+                    {
+                        if (statePos.x > existingCurveNode->GetGridPos().x)
+                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / dragSlowDown;
+                        else
+                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / dragSlowDown;
+                    }
+                    if (statePos.x > existingCurveNode->GetGridPos().x)
+                    {
+                        if (statePos.y > existingCurveNode->GetGridPos().y)
+                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / dragSlowDown;
+                        else
+                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / dragSlowDown;
+                    }
+                    else
+                    {
+                        if (statePos.y < existingCurveNode->GetGridPos().y)
+                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / dragSlowDown;
+                        else
+                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / dragSlowDown;
+                    }
+                    newCurve = std::max(-1.0f, std::min(1.0f, newCurve));
+                    existingCurveNode->SetOutArrowCurve(newCurve);
+                }
+            }
+            ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
+        }
+    }
+
+    bool PROPERTIES_OPEN = true;
+
+    //Properties on the right side of the screen
     void Window::Properties()
     {
         const auto nodeEditor = NodeEditor::Get();
-
-        // Code editor window
-        ImGui::Begin("Properties", nullptr, ImGuiWindowFlags_NoBringToFrontOnFocus
-            | ImGuiWindowFlags_NoMove);
+        const auto fsm = nodeEditor->GetCurrentFsm();
+        if (!fsm)
+            return;
+        
+        ImGui::Begin("Properties", &PROPERTIES_OPEN, ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoMove);
         {
+
+            if (PROPERTIES_FIRST_TIME && fsm->GetLinkedFile().empty())
+            {
+                GetPopupManager()->OpenPopup(static_cast<int>(WindowPopups::CreateFilePopup));
+                PROPERTIES_FIRST_TIME = false;
+            }
+            
+            //show fsm properties
+            if (nodeEditor->ShowFsmProps())
+                fsm->DrawProperties();
+            
+            //show selected node properties
             if (const auto node = nodeEditor->GetSelectedNode(); node)
             {
-                switch (node->GetType())
+                if (const auto type = node->GetType(); type == NodeType::State)
                 {
-                case NodeType::State:
-                    {
-                        if (const auto state = nodeEditor->GetCurrentFsm()->GetState(node->GetId()))
-                            state->DrawProperties();
-                        break;
-                    }
-                case NodeType::Transition:
-                    {
-                        if (const auto trigger = nodeEditor->GetCurrentFsm()->GetTrigger(node->GetId()))
-                            trigger->DrawProperties();
-                        break;
-                    }
+                    if (const auto state = fsm->GetState(node->GetId()))
+                        state->DrawProperties();
+                }
+                else if (type == NodeType::Transition)
+                {
+                    if (const auto trigger = fsm->GetTrigger(node->GetId()))
+                        trigger->DrawProperties();
                 }
             }
-            if (nodeEditor->GetCurrentFsm() && !nodeEditor->GetSelectedNode())
-                NodeEditor::Get()->SetShowFsmProps(true);
-            if (nodeEditor->GetCurrentFsm() && nodeEditor->ShowFsmProps())
-                nodeEditor->GetCurrentFsm()->DrawProperties();
+            else //if no selected nodes show fsm properties
+                nodeEditor->SetShowFsmProps(true);
+            
             ImGui::End();
         }
     }
@@ -1191,7 +803,6 @@ namespace LuaFsm
         txtEditor.SetPalette(m_Palette);
         if (strcmp(txtEditor.GetText().c_str(), oldText.c_str()) != 0)
             txtEditor.SetText(oldText);
-        //TrimTrailingNewlines(oldText);
         txtEditor.Render("Code");
         if (txtEditor.IsTextChanged())
             oldText = txtEditor.GetText();
@@ -1204,6 +815,8 @@ namespace LuaFsm
             if (entry.path().extension() == ".json")
             {
                 auto string = FileReader::ReadAllText(entry.path().string());
+                if (string.empty())
+                    continue;
                 const auto json = nlohmann::json::parse(string);
                 auto theme = ImGuiColorTheme::Deserialize(json);
                 AddTheme(theme.name, theme);
@@ -1286,20 +899,10 @@ namespace LuaFsm
             glfwSwapInterval(0);
     }
     
-    void Window::OnUpdate() const
-    {
-        glfwPollEvents();
-        BeginImGui();
-        OnImGuiRender();
-        EndImGui();
-    }
-    
     void Window::TrimTrailingNewlines(std::string& str)
     {
         while (!str.empty() && (str.back() == '\n' || str.back() == '\r'))
-        {
             str.pop_back();
-        }
     }
 
 
