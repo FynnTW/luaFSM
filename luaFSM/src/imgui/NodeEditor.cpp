@@ -88,6 +88,16 @@ namespace LuaFsm
         if (curve > 0.01f || curve < -0.01f && fromNode && targetNode)
         {
             ImVec2 controlPoint = midPoint + perpendicular * (lineLength * curve);
+            if (fromNode->GetType() == NodeType::Transition)
+            {
+                color = ImColor(155, 255, 155, 255);
+                fromNode->SetOutLineMidPoint(controlPoint);
+            }
+            if (targetNode->GetType() == NodeType::Transition)
+            {
+                color = ImColor(255, 155, 155, 255);
+                targetNode->SetInLineMidPoint(controlPoint);
+            }
             ImVec2 newFromPos = fromNode->GetFromPoint(controlPoint);
             ImVec2 newToPos = targetNode->GetFromPoint(controlPoint);
             targetNode->SetLastConnectionPoint(newToPos);

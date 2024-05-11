@@ -642,7 +642,7 @@ namespace LuaFsm
                 //lastScroll = ImVec2(1024, 1024);
                 firstOpen = false;
             }
-            if (ImGui::IsWindowHovered())
+            if (ImGui::IsWindowHovered() || ImGui::IsWindowFocused())
             {
                 if (ImGui::IsKeyPressed(ImGuiKey_S)
                 && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
@@ -708,32 +708,83 @@ namespace LuaFsm
                     }
                     else if (ImGui::IsMouseDragging(ImGuiMouseButton_Left))
                     {
+                        //Literally trial and error no clue why this works
                         if (const auto trigger = nodeEditor->GetCurrentFsm()->GetTrigger(existingCurveNode->GetId()))
                         {
+                            if (nodeEditor->IsSettingInCurve())
+                            {
+                                auto newCurve = existingCurveNode->GetInArrowCurve();
+                                if (const auto toState = trigger->GetCurrentState())
+                                {
+                                    const auto statePos = toState->GetNode()->GetGridPos();
+                                    if ( statePos.y < existingCurveNode->GetGridPos().y)
+                                    {
+                                        if (statePos.x > existingCurveNode->GetGridPos().x)
+                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
+                                        else
+                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
+                                    }
+                                    else
+                                    {
+                                        if (statePos.x < existingCurveNode->GetGridPos().x)
+                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
+                                        else
+                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
+                                    }
+                                    if (statePos.x > existingCurveNode->GetGridPos().x)
+                                    {
+                                        if (statePos.y < existingCurveNode->GetGridPos().y)
+                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
+                                        else
+                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
+                                    }
+                                    else
+                                    {
+                                        if (statePos.y > existingCurveNode->GetGridPos().y)
+                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
+                                        else
+                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
+                                    }
+                                    newCurve = std::max(-1.0f, std::min(1.0f, newCurve));
+                                    existingCurveNode->SetInArrowCurve(newCurve);
+                                }
+                            }
                             if (nodeEditor->IsSettingOutCurve())
                             {
                                 auto newCurve = existingCurveNode->GetOutArrowCurve();
                                 if (const auto fromState = trigger->GetNextState())
                                 {
-                                    if (const auto fromPos = fromState->GetNode()->GetGridPos(); fromPos.y < existingCurveNode->GetGridPos().y)
-                                        newCurve += (ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x + ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y) / 350;
+                                    const auto statePos = fromState->GetNode()->GetGridPos();
+                                    if ( statePos.y < existingCurveNode->GetGridPos().y)
+                                    {
+                                        if (statePos.x < existingCurveNode->GetGridPos().x)
+                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
+                                        else
+                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
+                                    }
                                     else
-                                        newCurve -= (ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x - ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y) / 350;
+                                    {
+                                        if (statePos.x > existingCurveNode->GetGridPos().x)
+                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
+                                        else
+                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y / 350;
+                                    }
+                                    if (statePos.x > existingCurveNode->GetGridPos().x)
+                                    {
+                                        if (statePos.y > existingCurveNode->GetGridPos().y)
+                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
+                                        else
+                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
+                                    }
+                                    else
+                                    {
+                                        if (statePos.y < existingCurveNode->GetGridPos().y)
+                                            newCurve += ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
+                                        else
+                                            newCurve -= ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / 350;
+                                    }
                                     newCurve = std::max(-1.0f, std::min(1.0f, newCurve));
                                     existingCurveNode->SetOutArrowCurve(newCurve);
-                                }
-                            }
-                            else if (nodeEditor->IsSettingInCurve())
-                            {
-                                auto newCurve = existingCurveNode->GetInArrowCurve();
-                                if (const auto toState = trigger->GetCurrentState())
-                                {
-                                    if (const auto fromPos = toState->GetNode()->GetGridPos(); fromPos.y < existingCurveNode->GetGridPos().y)
-                                        newCurve -= (ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x - ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y) / 350;
-                                    else
-                                        newCurve += (ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x + ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y) / 350;
-                                    newCurve = std::max(-1.0f, std::min(1.0f, newCurve));
-                                    existingCurveNode->SetInArrowCurve(newCurve);
                                 }
                             }
                             ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
