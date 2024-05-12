@@ -13,10 +13,8 @@
 
 namespace LuaFsm
 {
-    FsmTrigger::FsmTrigger(const std::string& id)
+    FsmTrigger::FsmTrigger(const std::string& id): DrawableObject(id)
     {
-        FsmTrigger::SetId(id);
-        //m_ConditionEditor.SetPalette(Window::GetPalette());
         m_ConditionEditor.SetText(m_Condition);
         m_ConditionEditor.SetLanguageDefinition(TextEditor::LanguageDefinition::Lua());
         m_ActionEditor.SetText(m_Action);
@@ -32,6 +30,21 @@ namespace LuaFsm
         InitPopups();
     }
 
+    FsmTrigger::FsmTrigger(const FsmTrigger& other): DrawableObject(other.GetId())
+    {
+        m_Name = other.m_Name;
+        m_Description = other.m_Description;
+        m_Condition = other.m_Condition;
+        m_Action = other.m_Action;
+        m_Priority = other.m_Priority;
+        m_CurrentStateId = other.m_CurrentStateId;
+        m_NextStateId = other.m_NextStateId;
+        m_Node.SetGridPos(other.m_Node.GetGridPos());
+        m_Node.SetColor(other.m_Node.GetColor());
+        m_Node.SetInArrowCurve(other.m_Node.GetInArrowCurve());
+        m_Node.SetOutArrowCurve(other.m_Node.GetOutArrowCurve());
+    }
+
     void FsmTrigger::UpdateEditors()
     {
         Window::TrimTrailingNewlines(m_Condition);
@@ -45,19 +58,19 @@ namespace LuaFsm
     {
         const auto unlinkNextStatePopup = std::make_shared<UnlinkStatePopup>("UnlinkNextState" + m_Id);
         unlinkNextStatePopup->parent = m_Id;
-        m_PopupManager.AddPopup(static_cast<int>(TriggerPopups::UnlinkNextState), unlinkNextStatePopup);
+        m_PopupManager.AddPopup(TriggerPopups::UnlinkNextState, unlinkNextStatePopup);
         
         const auto unlinkCurrentStatePopup = std::make_shared<UnlinkStatePopup>("UnlinkCurrentState" + m_Id);
         unlinkCurrentStatePopup->parent = m_Id;
-        m_PopupManager.AddPopup(static_cast<int>(TriggerPopups::UnlinkCurrentState), unlinkCurrentStatePopup);
+        m_PopupManager.AddPopup(TriggerPopups::UnlinkCurrentState, unlinkCurrentStatePopup);
         
         const auto deleteTrigger = std::make_shared<DeleteTriggerPopup>("deleteTrigger" + m_Id);
         deleteTrigger->parent = m_Id;
-        m_PopupManager.AddPopup(static_cast<int>(TriggerPopups::DeleteTrigger), deleteTrigger);
+        m_PopupManager.AddPopup(TriggerPopups::DeleteTrigger, deleteTrigger);
         
         const auto setNewId = std::make_shared<RefactorIdPopup>("SetNewId" + m_Id, "trigger");
         setNewId->parent = m_Id;
-        m_PopupManager.AddPopup(static_cast<int>(TriggerPopups::SetNewId), setNewId);
+        m_PopupManager.AddPopup(TriggerPopups::SetNewId, setNewId);
     }
 
     std::vector<std::shared_ptr<FsmTrigger>> FsmTrigger::CreateFromFile(const std::string& filePath)
@@ -121,6 +134,12 @@ namespace LuaFsm
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "No Entry for condition %s found in file", oldId.c_str()});
             return;
         }
+        regex = FsmRegex::IdRegexClassAnnotation("FSM_CONDITION", oldId);
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("class {0} : FSM_CONDITION", m_Id));
+        regex = FsmRegex::IdRegexClassDeclaration("FSM_CONDITION", oldId);
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("{0} = FSM_CONDITION:new", m_Id));
         regex = FsmRegex::ClassStringRegex(oldId, "name");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.name = \"{1}\"", m_Id, m_Name));
@@ -226,6 +245,7 @@ namespace LuaFsm
         }
         else if (!m_Action.empty())
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s action entry not found in file!", m_Id.c_str()});
+        m_UnSaved = false;
     }
 
     void FsmTrigger::UpdateFromFile(const std::string& filePath)
@@ -308,26 +328,19 @@ namespace LuaFsm
             action = match[1].str();
         SetAction(action);
         UpdateEditors();
+        m_UnSaved = false;
     }
 
     void FsmTrigger::UpdateToFile(const std::string& oldId)
     {
         if (!NodeEditor::Get()->GetCurrentFsm())
             return;
-        const auto filePath = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile();
-        if (filePath.empty())
-            return;
-        auto code = FileReader::ReadAllText(filePath);
+        auto code = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFileCode();
         if (code.empty())
             return;
-        auto classRegex = std::regex(fmt::format(R"((class\s+{0}\s*\:\s*FSM_CONDITION))", oldId));
-        if (std::smatch match; std::regex_search(code, match, classRegex))
-            code = std::regex_replace(code, classRegex, fmt::format(R"(class {0} : FSM_CONDITION)", m_Id));
-        classRegex = std::regex(fmt::format(R"(({0}\s*=\s*FSM_CONDITION\:new))", oldId));
-        if (std::smatch match; std::regex_search(code, match, classRegex))
-            code = std::regex_replace(code, classRegex, fmt::format(R"({0} = FSM_CONDITION:new)", m_Id));
         UpdateFileContents(code, oldId);
-        FileReader::SaveFile(filePath, code);
+        NodeEditor::Get()->GetCurrentFsm()->SaveLinkedFile(code);
+        CreateLastState();
     }
 
     void FsmTrigger::RefactorId(const std::string& newId)
@@ -345,7 +358,7 @@ namespace LuaFsm
         if (fsm->GetLinkedFile().empty())
             return;
         UpdateToFile(oldId);
-        fsm->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
+        fsm->UpdateToFile(fsm->GetId());
     }
 
     FsmState* FsmTrigger::GetCurrentState()
@@ -430,28 +443,28 @@ namespace LuaFsm
         m_Node.SetId(id);
     }
 
-    std::string FsmTrigger::MakeIdString(const std::string& name) const
-    {
-        return name + "##" + m_Id;
-    }
+#define COMPARE_COLOR(a, b) ((a).x - (b).x > 0.0001f || (a).y - (b).y > 0.0001f || (a).z - (b).z > 0.0001f || (a).w - (b).w > 0.0001f)
 
     void FsmTrigger::DrawProperties()
     {
-        if (const auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty())
+        if (ImGui::BeginMenuBar())
         {
-            if (ImGui::Button(MakeIdString("Load from file").c_str()))
-                UpdateFromFile(linkedFile);
-            ImGui::SameLine();
-            if (ImGui::Button(MakeIdString("Save to file").c_str()))
-                UpdateToFile(m_Id);
-            ImGui::SameLine();
+            if (const auto linkedFile = NodeEditor::Get()->GetCurrentFsm()->GetLinkedFile(); !linkedFile.empty())
+            {
+                if (ImGui::Button(MakeIdString("Load from file").c_str()))
+                    UpdateFromFile(linkedFile);
+                ImGui::SameLine();
+                if (ImGui::Button(MakeIdString("Save to file").c_str()))
+                    UpdateToFile(m_Id);
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+                if (ImGui::Button(MakeIdString("Delete").c_str()))
+                    m_PopupManager.OpenPopup(static_cast<int>(TriggerPopups::DeleteTrigger));
+                ImGui::SetItemTooltip("This doesn't delete it from your lua file! Delete it manually!");
+                ImGui::PopStyleColor();
+            }
+            ImGui::EndMenuBar();
         }
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
-        if (ImGui::Button(MakeIdString("Delete Trigger").c_str()))
-            m_PopupManager.OpenPopup(static_cast<int>(TriggerPopups::DeleteTrigger));
-        ImGui::SetItemTooltip("This doesn't delete it from your lua file! Delete it manually!");
-        ImGui::PopStyleColor();
-        ImGui::Separator();
         if (ImGui::BeginTabBar(MakeIdString("Node Properties").c_str()))
         {
             if (ImGui::BeginTabItem(MakeIdString("Trigger Properties").c_str()))
@@ -459,7 +472,7 @@ namespace LuaFsm
                 ImGui::Text("ID: %s", GetId().c_str());
                 ImGui::SameLine();
                 if (ImGui::Button(MakeIdString("Refactor ID").c_str()))
-                    m_PopupManager.OpenPopup(static_cast<int>(TriggerPopups::SetNewId));
+                    m_PopupManager.OpenPopup(TriggerPopups::SetNewId);
                 ImGui::Text("Name");
                 std::string name = GetName();
                 const std::string nameLabel = "##Name" + GetId();
@@ -474,6 +487,7 @@ namespace LuaFsm
                 ImGui::Text("Priority");
                 ImGui::SetNextItemWidth(150.f);
                 ImGui::InputInt(MakeIdString("Priority").c_str(), &m_Priority);
+                ImGui::SetItemTooltip("Priority decides the order in which conditions get evaluated.");
                 ImGui::Separator();
                 ImGui::SetNextItemWidth(100.f);
                 float inCurve = m_Node.GetInArrowCurve();
@@ -487,47 +501,52 @@ namespace LuaFsm
                 ImGui::Separator();
                 auto color = m_Node.GetColor();
                 ImGui::ColorEdit4("Node Color", reinterpret_cast<float*>(&color));
-                m_Node.SetColor(color);
-                m_Node.SetCurrentColor(color);
-                if (m_Node.IsSelected())
-                    m_Node.HighLightSelected();
+                if (ImVec4(color) != ImVec4(m_Node.GetColor()))
+                {
+                    m_Node.SetColor(color);
+                    m_Node.SetCurrentColor(color);
+                }
                 ImGui::Separator();
                 ImGui::Text("Current State: ");
-                if (GetCurrentState())
+                if (const auto currentState = GetCurrentState())
                 {
                     ImGui::SameLine();
                     ImGui::Selectable(MakeIdString(m_CurrentStateId).c_str(), false);
+                    ImGui::SetItemTooltip(fmt::format("{0}\n{1}", currentState->GetName(), currentState->GetDescription()).c_str());
                     if (ImGui::IsItemClicked())
-                        NodeEditor::Get()->MoveToNode(m_CurrentStateId);
+                        NodeEditor::Get()->MoveToNode(m_CurrentStateId, NodeType::State);
                     if (ImGui::IsItemHovered())
                     {
-                        GetCurrentState()->GetNode()->HighLight();
+                        currentState->GetNode()->SetIsHighlighted(true);
                         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                         {
-                            dynamic_cast<UnlinkStatePopup*>(m_PopupManager.GetPopup(
-                                static_cast<int>(TriggerPopups::UnlinkCurrentState)).get())->stateId = m_CurrentStateId;
-                            m_PopupManager.OpenPopup(static_cast<int>(TriggerPopups::UnlinkCurrentState));
+                            m_PopupManager.GetPopup<UnlinkStatePopup>(TriggerPopups::UnlinkCurrentState)->stateId = m_CurrentStateId;
+                            m_PopupManager.OpenPopup(TriggerPopups::UnlinkCurrentState);
                         }
                     }
+                    else
+                        currentState->GetNode()->SetIsHighlighted(false);
                 }
                 ImGui::Separator();
                 ImGui::Text("Next State: ");
-                if (GetNextState())
+                if (const auto nextState = GetNextState())
                 {
                     ImGui::SameLine();
                     ImGui::Selectable(MakeIdString(m_NextStateId).c_str(), false);
+                    ImGui::SetItemTooltip(fmt::format("{0}\n{1}", nextState->GetName(), nextState->GetDescription()).c_str());
                     if (ImGui::IsItemClicked())
-                        NodeEditor::Get()->MoveToNode(m_NextStateId);
+                        NodeEditor::Get()->MoveToNode(m_NextStateId, NodeType::State);
                     if (ImGui::IsItemHovered())
                     {
-                        GetNextState()->GetNode()->HighLight();
+                        nextState->GetNode()->SetIsHighlighted(true);
                         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                         {
-                            dynamic_cast<UnlinkStatePopup*>(m_PopupManager.GetPopup(
-                                static_cast<int>(TriggerPopups::UnlinkNextState)).get())->stateId = m_NextStateId;
-                            m_PopupManager.OpenPopup(static_cast<int>(TriggerPopups::UnlinkNextState));
+                            m_PopupManager.GetPopup<UnlinkStatePopup, TriggerPopups>(TriggerPopups::UnlinkNextState)->stateId = m_NextStateId;
+                            m_PopupManager.OpenPopup(TriggerPopups::UnlinkNextState);
                         }
                     }
+                    else
+                        nextState->GetNode()->SetIsHighlighted(false);
                 }
                 ImGui::Separator();
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
@@ -559,22 +578,36 @@ namespace LuaFsm
         }
 
         m_PopupManager.ShowOpenPopups();
-        
+    }
+
+    void FsmTrigger::CreateLastState()
+    {
+        m_PreviousState = std::make_shared<FsmTrigger>(*this);
+    }
+
+    bool FsmTrigger::IsChanged()
+    {
+        if (m_PreviousState == nullptr)
+            return true;
+        if (*this != *m_PreviousState || m_UnSaved)
+        {
+            m_UnSaved = true;
+            return true;
+        }
+        return false;
     }
 
     void FsmTrigger::AppendToFile()
     {
         if (const auto fsm = NodeEditor::Get()->GetCurrentFsm(); fsm)
         {
-            const auto filePath = fsm->GetLinkedFile();
-            if (filePath.empty())
-                return;
-            auto code = FileReader::ReadAllText(filePath);
-            if (code.empty())
-                return;
-            code += "\n\n";
-            code += GetLuaCode();
-            FileReader::SaveFile(filePath, code);
+            if (auto code = fsm->GetLinkedFileCode(); !code.empty())
+            {
+                code += "\n\n";
+                code += GetLuaCode();
+                fsm->SaveLinkedFile(code);
+                CreateLastState();
+            }
         }
     }
 }

@@ -20,7 +20,8 @@ namespace LuaFsm
     enum class NodeType
     {
         State,
-        Transition
+        Transition,
+        Fsm
     };
 
     struct StateData
@@ -63,8 +64,6 @@ namespace LuaFsm
         [[nodiscard]] float GetRadius() const { return m_Radius; }
         [[nodiscard]] NodeType GetType() const { return m_Type; }
         void SetType(const NodeType type) { m_Type = type; }
-        [[nodiscard]] bool IsInvisible() const { return m_IsVisible; }
-        void SetInvisible(const bool invisible) { m_IsVisible = invisible; }
         void SetRadius(const float radius) { m_Radius = radius; }
         [[nodiscard]] ImVec2 GetCenter() const { return {m_Size.x / 2, m_Size.y / 2}; }
         void SetCenter(const ImVec2& center) { m_Center = center; }
@@ -98,7 +97,12 @@ namespace LuaFsm
         void HighLight() { m_CurrentColor = GetHighlightColor();}
         void HighLightSelected() { m_CurrentColor = GetHighlightColorSelected();}
         void UnHighLight() { m_CurrentColor = m_Color; }
-        void Deselect() { m_Selected = false; UnHighLight(); }
+        void Deselect()
+        {
+            m_Selected = false;
+            if (!m_IsHighlighted)
+                UnHighLight();
+        }
         [[nodiscard]] ImColor GetCurrentColor() const { return m_CurrentColor; }
         void SetCurrentColor(const ImColor currentColor) { m_CurrentColor = currentColor; }
         void SetHighlightColor(const ImColor color) { m_HighLightColor = color; }
@@ -106,19 +110,19 @@ namespace LuaFsm
         [[nodiscard]] ImColor GetHighlightColor() const
         {
             return {
-                std::min(1.0f, m_Color.Value.x * 1.5f),
-                std::min(1.0f, m_Color.Value.y * 1.5f),
-                std::min(1.0f, m_Color.Value.z * 1.5f),
-                std::min(1.0f, m_Color.Value.w * 1.5f)
+                std::min(1.0f, m_Color.Value.x * 1.75f),
+                std::min(1.0f, m_Color.Value.y * 1.75f),
+                std::min(1.0f, m_Color.Value.z * 1.75f),
+                std::min(1.0f, m_Color.Value.w * 1.75f)
             };
         }
         [[nodiscard]] ImColor GetHighlightColorSelected() const
         {
             return {
-               std::min(1.0f, m_Color.Value.x * 2.0f),
-               std::min(1.0f, m_Color.Value.y * 2.0f),
-               std::min(1.0f, m_Color.Value.z * 2.0f),
-               std::min(1.0f, m_Color.Value.w * 2.0f)
+               std::min(1.0f, m_Color.Value.x * 1.5f),
+               std::min(1.0f, m_Color.Value.y * 1.5f),
+               std::min(1.0f, m_Color.Value.z * 1.5f),
+               std::min(1.0f, m_Color.Value.w * 1.5f)
             };
         }
         void HandleSelection(NodeEditor* editor);
@@ -146,6 +150,15 @@ namespace LuaFsm
         ImVec2 GetInLineMidPoint() const { return m_InLineMidPoint; }
         void SetOutLineMidPoint(const ImVec2& lineMidPoint) { m_OutLineMidPoint = lineMidPoint; }
         ImVec2 GetOutLineMidPoint() const { return m_OutLineMidPoint; }
+        void SetIsHighlighted(const bool isHighlighted)
+        {
+            m_IsHighlighted = isHighlighted;
+            if (isHighlighted)
+                HighLight();
+            else if (!m_Selected)
+                UnHighLight();
+        }
+        [[nodiscard]] bool IsHighlighted() const { return m_IsHighlighted; }
 
     private:
         ImVec2 m_Position{-1.0f, -1.0f};
@@ -157,9 +170,10 @@ namespace LuaFsm
         ImVec2 m_Center;
         std::string m_Id;
         bool m_Selected = false;
-        bool m_IsVisible = false;
+        bool m_IsHighlighted = false;
         float m_InArrowCurve = 0.0f;
         float m_OutArrowCurve = 0.0f;
+        bool m_TextLeft = false;
         int m_WindowLabel = 0;
         ImVec2 m_LastConnectionPoint = {0, 0};
         NodeShape m_Shape = NodeShape::Circle;

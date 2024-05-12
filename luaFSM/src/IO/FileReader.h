@@ -19,6 +19,7 @@ namespace LuaFsm
         void SetStreamSize(const int size) { m_StreamSize = size; }
         void ReadBytes(char* buffer, int size);
         std::string ReadWord();
+        static bool FileExists(const char* str);
         static void SaveFile(const std::string& path, const std::string& content);
         std::string GetVarName(const std::string& identifier);
         std::string GetVarName(std::string& line, const std::string& identifier);

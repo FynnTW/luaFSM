@@ -1,8 +1,6 @@
 ﻿#include "pch.h"
 #include "Popup.h"
 
-#include <utility>
-
 #include "Graphics/Window.h"
 #include "imgui/ImGuiNotify.hpp"
 #include "imgui/imgui_stdlib.h"
@@ -11,32 +9,6 @@
 
 namespace LuaFsm
 {
-    //IGFD::FileDialogConfig Popup::config;
-
-    void PopupManager::AddPopup(const int id, std::shared_ptr<Popup> popup)
-    {
-        m_Popups[id] = std::move(popup);
-    }
-
-    void PopupManager::RemovePopup(const int id)
-    {
-        if (m_Popups.contains(id))
-            m_Popups.erase(id);
-    }
-
-    std::shared_ptr<Popup> PopupManager::GetPopup(const int id)
-    {
-        if (m_Popups.contains(id))
-            return m_Popups[id];
-        return {};
-    }
-
-    void PopupManager::OpenPopup(const int id)
-    {
-        if (m_Popups.contains(id))
-            m_Popups[id]->isOpen = true;
-    }
-
     void PopupManager::ShowOpenPopups()
     {
         for (const auto& popup : m_Popups | std::views::values)
@@ -50,19 +22,29 @@ namespace LuaFsm
         }
     }
 
-    void Popup::Draw()
+    Popup::~Popup() = default;
+
+    bool Popup::Draw()
     {
         if (ImGui::BeginPopup(id.c_str()))
         {
             DrawFields();
             DrawButtons();
             ImGui::EndPopup();
+            return true;
         }
+        return false;
     }
 
     void Popup::Open()
     {
         ImGui::OpenPopup(id.c_str());
+    }
+
+    void Popup::Close()
+    {
+        isOpen = false;
+        ImGui::CloseCurrentPopup();
     }
 
     bool Popup::OpenFileDialog(const std::string& key, const std::string& title,
@@ -93,13 +75,13 @@ namespace LuaFsm
     }
 
    AddFsmPopup::AddFsmPopup()
-    {
-        id = "AddFSM";
-        fsmId = "";
-        fsmName = "";
-    }
+   {
+       id = "AddFSM";
+       fsmId = "";
+       fsmName = "";
+   }
 
-    void AddFsmPopup::DrawFields()
+   void AddFsmPopup::DrawFields()
     {
         ImGui::Text("Add FSM");
         ImGui::InputText("FSM ID", &fsmId, 0);
@@ -118,9 +100,10 @@ namespace LuaFsm
                 const auto fsm = std::make_shared<Fsm>(fsmId);
                 fsm->SetName(fsmName);
                 NodeEditor::Get()->SetCurrentFsm(fsm);
+                NodeEditor::Get()->SetCanvasScroll({1024, 1024});
                 fsmId = "";
                 fsmName = "";
-                ImGui::CloseCurrentPopup();
+                Close();
             }
             ImGui::SameLine();
         }
@@ -129,7 +112,7 @@ namespace LuaFsm
         else
             NodeEditor::InformValidityError(invalid);
         if (ImGui::Button("Cancel"))
-            ImGui::CloseCurrentPopup();
+            Close();
     }
 
     ThemeEditor::ThemeEditor()
@@ -180,6 +163,7 @@ namespace LuaFsm
                 Window::SetTheme(name);
                 const auto json = theme.Serialize();
                 FileReader::SaveFile("assets/themes/" + name + ".json", json.dump(4));
+                NodeEditor::Get()->SaveSettings();
                 name = "";
             }
             ImGui::SameLine();
@@ -189,7 +173,7 @@ namespace LuaFsm
         if (ImGui::Button("Close"))
         {
             Window::SetTheme(activeTheme);
-            ImGui::CloseCurrentPopup();
+            Close();
         }
     }
 
@@ -214,9 +198,11 @@ namespace LuaFsm
             if (!filePath.empty())
             {
                 Fsm::CreateFromFile(filePath);
+                NodeEditor::Get()->SaveSettings();
+                NodeEditor::Get()->MoveToNode(NodeEditor::Get()->GetCurrentFsm()->GetInitialStateId(), NodeType::State);
                 folder = "";
                 filePath = "";
-                ImGui::CloseCurrentPopup();
+                Close();
             }
         }
     }
@@ -242,7 +228,8 @@ namespace LuaFsm
         const auto fsm = NodeEditor::Get()->GetCurrentFsm();
         if (!fsm)
         {
-            ImGui::CloseCurrentPopup();
+            Close();
+            return;
         }
         if (filePath.empty())
         {
@@ -265,9 +252,10 @@ namespace LuaFsm
                 const auto code = fsm->GetLuaCode();
                 FileReader::SaveFile(filePath, code);
                 fsm->SetLinkedFile(filePath);
+                NodeEditor::Get()->SaveSettings();
                 folder = "";
                 filePath = "";
-                ImGui::CloseCurrentPopup();
+                Close();
             }
         }
     }
@@ -293,7 +281,7 @@ namespace LuaFsm
         const auto nodeEditor = NodeEditor::Get();
         if (isDrawn && (!nodeEditor->GetSelectedNode() || nodeEditor->GetSelectedNode()->GetType() == NodeType::State))
         {
-            ImGui::CloseCurrentPopup();
+            Close();
             return;
         }
         if (isCopy && (!nodeEditor->GetCopiedNode()
@@ -301,7 +289,7 @@ namespace LuaFsm
             || !nodeEditor->GetCurrentFsm()->GetState(nodeEditor->GetCopiedNode()->GetId())
             ))
         {
-            ImGui::CloseCurrentPopup();
+            Close();
             return;
         }
         if (const auto invalid =  nodeEditor->CheckIdValidity(stateId);
@@ -349,7 +337,7 @@ namespace LuaFsm
                 }
                 stateId = "";
                 name = "";
-                ImGui::CloseCurrentPopup();
+                Close();
             }
             ImGui::SameLine();
         }
@@ -358,7 +346,7 @@ namespace LuaFsm
         else
             NodeEditor::InformValidityError(invalid);
         if (ImGui::Button("Cancel"))
-            ImGui::CloseCurrentPopup();
+            Close();
     }
 
     AddTriggerPopup::AddTriggerPopup(const std::string& instanceId)
@@ -382,6 +370,7 @@ namespace LuaFsm
         const auto nodeEditor = NodeEditor::Get();
         if (isDrawn && (!nodeEditor->GetSelectedNode() || nodeEditor->GetSelectedNode()->GetType() == NodeType::Transition))
         {
+            isOpen = false;
             ImGui::CloseCurrentPopup();
             return;
         }
@@ -390,6 +379,7 @@ namespace LuaFsm
             || !nodeEditor->GetCurrentFsm()->GetTrigger(nodeEditor->GetCopiedNode()->GetId())
             ))
         {
+            isOpen = false;
             ImGui::CloseCurrentPopup();
             return;
         }
@@ -437,7 +427,7 @@ namespace LuaFsm
                 }
                 triggerId = "";
                 name = "";
-                ImGui::CloseCurrentPopup();
+                Close();
             }
             ImGui::SameLine();
         }
@@ -446,7 +436,7 @@ namespace LuaFsm
         else
             NodeEditor::InformValidityError(invalid);
         if (ImGui::Button("Cancel"))
-            ImGui::CloseCurrentPopup();
+            Close();
     }
 
     UnlinkTriggerPopup::UnlinkTriggerPopup(const std::string& instanceId)
@@ -474,13 +464,13 @@ namespace LuaFsm
         {
             state->RemoveTrigger(triggerId);
             triggerId = "";
-            ImGui::CloseCurrentPopup();
+            Close();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel"))
         {
             triggerId = "";
-            ImGui::CloseCurrentPopup();
+            Close();
         }
     }
 
@@ -506,13 +496,13 @@ namespace LuaFsm
                 trigger->SetCurrentState("");
             }
             stateId = "";
-            ImGui::CloseCurrentPopup();
+            Close();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel"))
         {
             stateId = "";
-            ImGui::CloseCurrentPopup();
+            Close();
         }
     }
 
@@ -557,13 +547,11 @@ namespace LuaFsm
             if (std::smatch match; std::regex_search(code, match, regex))
                 code = std::regex_replace(code, regex, "");
             FileReader::SaveFile(filePath, code);
-            ImGui::CloseCurrentPopup();
+            Close();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel"))
-        {
-            ImGui::CloseCurrentPopup();
-        }
+            Close();
     }
 
     void DeleteTriggerPopup::DrawButtons()
@@ -595,13 +583,11 @@ namespace LuaFsm
             if (std::smatch match; std::regex_search(code, match, regex))
                 code = std::regex_replace(code, regex, "");
             FileReader::SaveFile(filePath, code);
-            ImGui::CloseCurrentPopup();
+            Close();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel"))
-        {
-            ImGui::CloseCurrentPopup();
-        }
+            Close();
     }
 
     RefactorIdPopup::RefactorIdPopup(const std::string& instanceId, const std::string& objType)
@@ -622,33 +608,69 @@ namespace LuaFsm
         if (const auto invalid =  nodeEditor->CheckIdValidity(newId);
             invalid == IdValidityError::Valid)
         {
-            if (objType == "State")
+            if (ImGui::Button(MakeIdString("Refactor").c_str()))
             {
-                if (const auto state = nodeEditor->GetCurrentFsm()->GetState(parent); state)
+                if (objType == "state")
                 {
-                    state->RefactorId(newId);
-                    newId = "";
-                    ImGui::CloseCurrentPopup();
+                    if (const auto state = nodeEditor->GetCurrentFsm()->GetState(parent); state)
+                    {
+                        state->RefactorId(newId);
+                        newId = "";
+                        Close();
+                    }
+                }
+                else if (objType == "trigger")
+                {
+                    if (const auto trigger = nodeEditor->GetCurrentFsm()->GetTrigger(parent); trigger)
+                    {
+                        trigger->RefactorId(newId);
+                        newId = "";
+                        Close();
+                    }
+                }
+                else if (objType == "fsm")
+                {
+                    if (const auto fsm = nodeEditor->GetCurrentFsm(); fsm)
+                    {
+                        fsm->RefactorId(newId);
+                        newId = "";
+                        Close();
+                    }
                 }
             }
-            else if (objType == "Trigger")
-            {
-                if (const auto trigger = nodeEditor->GetCurrentFsm()->GetTrigger(parent); trigger)
-                {
-                    trigger->RefactorId(newId);
-                    newId = "";
-                    ImGui::CloseCurrentPopup();
-                }
-            }
-            else if (objType == "Fsm")
-            {
-                if (const auto fsm = nodeEditor->GetCurrentFsm(); fsm)
-                {
-                    fsm->RefactorId(newId);
-                    newId = "";
-                    ImGui::CloseCurrentPopup();
-                }
-            }
+            ImGui::SameLine();
         }
+        else
+            NodeEditor::InformValidityError(invalid);
+        if (ImGui::Button("Cancel"))
+            Close();
+    }
+
+    OptionsPopUp::OptionsPopUp()
+    {
+        appendToFile = NodeEditor::Get()->AppendStates();
+        showPriority = NodeEditor::Get()->ShowPriority();
+    }
+
+    void OptionsPopUp::DrawFields()
+    {
+        ImGui::Checkbox("Append to file", &appendToFile);
+        ImGui::SetItemTooltip("If checked, the states and conditions will be appended to the linked file.\nIf unchecked, the code will be copied to the clipboard.");
+        ImGui::Checkbox("Show Priority", &showPriority);
+        ImGui::SetItemTooltip("Show priority of conditions on the canvas.");
+    }
+
+    void OptionsPopUp::DrawButtons()
+    {
+        if (ImGui::Button("Save"))
+        {
+            NodeEditor::Get()->SetAppendStates(appendToFile);
+            NodeEditor::Get()->SetShowPriority(showPriority);
+            NodeEditor::Get()->SaveSettings();
+            Close();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel"))
+            Close();
     }
 }

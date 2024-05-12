@@ -36,6 +36,8 @@ namespace LuaFsm
 
     bool MAIN_DOCK_OPENED = true;
     bool DOCK_SPACE_SET = false;
+
+    bool HELP_WINDOW_OPEN = false;
     
     ImVec2 CURSOR_POS = {0, 0};
     bool ADD_NEW_STATE_AT_CURSOR = false;
@@ -44,10 +46,6 @@ namespace LuaFsm
     bool PASTE_NEW_TRIGGER_AT_CURSOR = false;
     bool PROPERTIES_FIRST_TIME = true;
     bool FIRST_OPEN = true;
-    
-    std::string LAST_SAVE_PATH;
-    std::string LAST_OPEN_PATH;
-    std::string LAST_PATH;
     
     Window::Window(const std::string& title, const unsigned int width, const unsigned int height)
     {
@@ -168,35 +166,35 @@ namespace LuaFsm
 
         //Default theme
         SetTheme("Green");
+        NodeEditor::Get()->LoadSettings();
         //Popups
         InitializePopups();
-        
     }
     IM_MSVC_RUNTIME_CHECKS_RESTORE
 
     void Window::InitializePopups()
     {
-        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::AddFsmPopup), std::make_shared<AddFsmPopup>());
-        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::ThemeEditor), std::make_shared<ThemeEditor>());
-        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::LoadFile), std::make_shared<LoadFile>());
-        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::CreateFilePopup), std::make_shared<CreateFilePopup>());
-        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::AddStateMain), std::make_shared<AddStatePopup>("AddStateMain"));
+        m_PopupManager.AddPopup(WindowPopups::AddFsmPopup, std::make_shared<AddFsmPopup>());
+        m_PopupManager.AddPopup(WindowPopups::ThemeEditor, std::make_shared<ThemeEditor>());
+        m_PopupManager.AddPopup(WindowPopups::LoadFile, std::make_shared<LoadFile>());
+        m_PopupManager.AddPopup(WindowPopups::CreateFilePopup, std::make_shared<CreateFilePopup>());
+        m_PopupManager.AddPopup(WindowPopups::OptionsPopup, std::make_shared<OptionsPopUp>());
         
         const auto addStateCursor = std::make_shared<AddStatePopup>("AddStateCursor");
         addStateCursor->isDrawn = true;
-        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::AddStateCursor), addStateCursor);
+        m_PopupManager.AddPopup(WindowPopups::AddStateCursor, addStateCursor);
         
         const auto pasteState = std::make_shared<AddStatePopup>("PasteState");
         pasteState->isCopy = true;
-        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::PasteState), pasteState);
+        m_PopupManager.AddPopup(WindowPopups::PasteState, pasteState);
         
         const auto addTriggerCursor = std::make_shared<AddTriggerPopup>("AddTriggerCursor");
         addTriggerCursor->isDrawn = true;
-        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::AddTriggerCursor), addTriggerCursor);
+        m_PopupManager.AddPopup(WindowPopups::AddTriggerCursor, addTriggerCursor);
         
         const auto pasteTrigger = std::make_shared<AddTriggerPopup>("PasteTrigger");
         pasteTrigger->isCopy = true;
-        m_PopupManager.AddPopup(static_cast<int>(WindowPopups::PasteTrigger), pasteTrigger);
+        m_PopupManager.AddPopup(WindowPopups::PasteTrigger, pasteTrigger);
     }
     
     void Window::OnUpdate() const
@@ -218,10 +216,19 @@ namespace LuaFsm
     {
         ImGui::PushFont(MAIN_EDITOR_FONT); //Main editor font
         RenderNotifications();
+        bool check = false;
+        if (NodeEditor::Get()->GetCurrentFsm())
+        {
+            NodeEditor::Get()->GetCurrentFsm()->LastState();
+            check = true;
+        }
         MainMenu();
         MainDockSpace();
         Canvas();
         Properties();
+        HelpWindow();
+        if (NodeEditor::Get()->GetCurrentFsm() && check)
+            NodeEditor::Get()->GetCurrentFsm()->CheckForChanges();
         ImGui::PopFont(); //Main editor font
     }
     
@@ -262,12 +269,15 @@ namespace LuaFsm
 
     ImVec4 INVISIBLE_COLOR = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
 
+    ImVec2 MENU_BAR_SIZE = {0, 0};
+
     void Window::MainMenu()
     {
         const auto fsm = NodeEditor::Get()->GetCurrentFsm();
         const auto popupManager = GetPopupManager();
         if (ImGui::BeginMainMenuBar())
         {
+            MENU_BAR_SIZE = ImGui::GetWindowSize();
             /*-----------------------------*\
                         File menu
             \*-----------------------------*/
@@ -276,28 +286,20 @@ namespace LuaFsm
                 //New FSM
                 if (ImGui::MenuItem("New FSM"))
                 {
-                    popupManager->OpenPopup(static_cast<int>(WindowPopups::AddFsmPopup));
+                    popupManager->OpenPopup(WindowPopups::AddFsmPopup);
                     PROPERTIES_FIRST_TIME = true;
-                    FIRST_OPEN = true;
                 }
 
                 //Load FSM from Lua file
                 if (ImGui::MenuItem("Load"))
-                {
-                    std::string current;
-                    if (fsm)
-                        current = fsm->GetId();
-                    popupManager->OpenPopup(static_cast<int>(WindowPopups::LoadFile));
-                    if (!current.empty() && NodeEditor::Get()->GetCurrentFsm() && current != NodeEditor::Get()->GetCurrentFsm()->GetId())
-                        FIRST_OPEN = true;
-                }
+                    popupManager->OpenPopup(WindowPopups::LoadFile);
 
                 if (fsm)
                 {
                     const std::string linkedFile = fsm->GetLinkedFile();
                     //Create Lua File
                     if (linkedFile.empty() && ImGui::MenuItem("Create Lua File"))
-                        popupManager->OpenPopup(static_cast<int>(WindowPopups::CreateFilePopup));
+                        popupManager->OpenPopup(WindowPopups::CreateFilePopup);
                     //Save to Lua File
                     if (!linkedFile.empty() && ImGui::MenuItem("Save"))
                         fsm->UpdateToFile(fsm->GetId());
@@ -316,14 +318,33 @@ namespace LuaFsm
             if (ImGui::BeginMenu("Themes"))
             {
                 for (const auto& name : m_Themes | std::views::keys)
+                {
                     if (ImGui::MenuItem(name.c_str()))
+                    {
                         SetTheme(name);
+                        NodeEditor::Get()->SaveSettings();
+                    }
+                }
                 ImGui::EndMenu();
             }
             //Edit theme
             ImGui::PushStyleColor(ImGuiCol_Button, INVISIBLE_COLOR);
             if (ImGui::Button("Edit Theme"))
-                popupManager->OpenPopup(static_cast<int>(WindowPopups::ThemeEditor));
+                popupManager->OpenPopup(WindowPopups::ThemeEditor);
+            ImGui::PopStyleColor(); //INVISIBLE_COLOR
+            
+            /*-----------------------------*\
+                    Options and help
+            \*-----------------------------*/
+            
+            ImGui::PushStyleColor(ImGuiCol_Button, INVISIBLE_COLOR);
+            if (ImGui::Button("Options"))
+                popupManager->OpenPopup(WindowPopups::OptionsPopup);
+            ImGui::PopStyleColor(); //INVISIBLE_COLOR
+            
+            ImGui::PushStyleColor(ImGuiCol_Button, INVISIBLE_COLOR);
+            if (ImGui::Button("Help"))
+                HELP_WINDOW_OPEN = !HELP_WINDOW_OPEN;
             ImGui::PopStyleColor(); //INVISIBLE_COLOR
             
             
@@ -338,19 +359,13 @@ namespace LuaFsm
                     NodeEditor::Get()->DeselectAllNodes(); //No nodes shows FSM properties
                 ImGui::PopStyleColor(); //INVISIBLE_COLOR
 
-                //Add a new state
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.2f, 1.0f)); //Green button
-                if (ImGui::Button("Add State"))
-                    popupManager->OpenPopup(static_cast<int>(WindowPopups::AddStateMain));
-                ImGui::PopStyleColor(); //Green button
-
                 //FSM name
                 ImGui::Text("FSM: ");
                 ImGui::Text(fsm->GetName().c_str());
             }
             ImGui::EndMainMenuBar();
         }
-
+        
         //Open popups
         popupManager->ShowOpenPopups(); 
     }
@@ -364,11 +379,10 @@ namespace LuaFsm
 
     void Window::MainDockSpace()
     {
-        
         const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
         // Set window position and size
-        ImGui::SetNextWindowPos(ImVec2(mainViewport->WorkPos.x, mainViewport->WorkPos.y + 30), ImGuiCond_Once);
-        ImGui::SetNextWindowSize(ImVec2(mainViewport->WorkSize.x, mainViewport->WorkSize.y - 30), ImGuiCond_Once);
+        ImGui::SetNextWindowPos(ImVec2(mainViewport->WorkPos.x, mainViewport->WorkPos.y + MENU_BAR_SIZE.y), ImGuiCond_Once);
+        ImGui::SetNextWindowSize(ImVec2(mainViewport->WorkSize.x, mainViewport->WorkSize.y - MENU_BAR_SIZE.y), ImGuiCond_Once);
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         // Main window encompassing all elements
@@ -388,7 +402,7 @@ namespace LuaFsm
                 const ImGuiID dockIdLeft = ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.75f, nullptr, &dockspaceId);
                 const ImGuiID dockIdRight = dockspaceId;
 
-                ImGui::DockBuilderDockWindow("Canvas", dockIdLeft);
+                ImGui::DockBuilderDockWindow(NodeEditor::Get()->canvasName.c_str(), dockIdLeft);
                 ImGui::DockBuilderDockWindow("Properties", dockIdRight);
 
                 ImGui::DockBuilderFinish(dockspaceId);
@@ -403,11 +417,11 @@ namespace LuaFsm
     ImVec2 CANVAS_SIZE{};
     float MOUSE_SCROLL = 0;
     bool CANVAS_OPEN = true;
+    bool ADD_ELEMENTS_MENU = false;
     uint32_t CANVAS_FLAGS =
         ImGuiWindowFlags_NoBringToFrontOnFocus
         | ImGuiWindowFlags_NoScrollbar
-        | ImGuiWindowFlags_NoScrollWithMouse
-        | ImGuiWindowFlags_NoMove;
+        | ImGuiWindowFlags_NoScrollWithMouse;
 
     ImVec2 CANVAS_FULL_SIZE = {4096, 4096};
     
@@ -418,19 +432,29 @@ namespace LuaFsm
         const auto fsm = nodeEditor->GetCurrentFsm();
         if (!fsm)
             return;
+
+        if (fsm->IsUnSavedGlobal())
+            CANVAS_FLAGS |= ImGuiWindowFlags_UnsavedDocument;
+        else
+            CANVAS_FLAGS &= ~ImGuiWindowFlags_UnsavedDocument;
+        
+        const auto popupManager = GetPopupManager();
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         
         //Size of the canvas
         ImGui::SetNextWindowContentSize(CANVAS_FULL_SIZE);
         ImGui::PushFont(nodeEditor->GetFont()); //Node font
-        ImGui::Begin("Canvas", &CANVAS_OPEN, CANVAS_FLAGS);
+        ImGui::Begin(nodeEditor->canvasName.c_str(), nullptr, CANVAS_FLAGS);
         {
+            
+            ImGui::PopStyleVar(); //ImGuiStyleVar_WindowPadding
+            
             //Handle initial canvas position
             if (FIRST_OPEN)
             {
                 //Center canvas on nodes when loading
                 if (fsm->GetInitialState())
-                    nodeEditor->MoveToNode(fsm->GetInitialStateId());
+                    nodeEditor->MoveToNode(fsm->GetInitialStateId(), NodeType::State);
                 else
                 {
                     ImGui::SetScrollX(1024);
@@ -483,7 +507,7 @@ namespace LuaFsm
                     newPos.x = std::min(CANVAS_POS.x + CANVAS_SIZE.x - selectedNode->GetSize().x, newPos.x);
                     newPos.y = std::min(CANVAS_POS.y + CANVAS_SIZE.y - selectedNode->GetSize().y, newPos.y);
                     newPos = (newPos - CANVAS_POS + ImVec2{ImGui::GetScrollX(), ImGui::GetScrollY()}) / nodeEditor->GetScale();
-                    selectedNode->SetGridPos(newPos);
+                    selectedNode->SetGridPos(newPos - nodeEditor->GetDragOffset());
                 }
             }
             else
@@ -497,65 +521,177 @@ namespace LuaFsm
                 {
                     case NodeType::State:
                     {
-                        const auto popup = dynamic_cast<AddStatePopup*>(GetPopupManager()->GetPopup(static_cast<int>(WindowPopups::PasteState)).get());
-                        popup->position = CURSOR_POS;
-                        popup->Open();
+                        popupManager->GetPopup<AddStatePopup>(WindowPopups::PasteState)->position = CURSOR_POS;
+                        popupManager->OpenPopup(WindowPopups::PasteState);
                         break;
                     }
                     case NodeType::Transition:
                     {
-                        const auto popup = dynamic_cast<AddTriggerPopup*>(GetPopupManager()->GetPopup(static_cast<int>(WindowPopups::PasteTrigger)).get());
-                        popup->position = CURSOR_POS;
-                        popup->Open();
+                        popupManager->GetPopup<AddTriggerPopup>(WindowPopups::PasteTrigger)->position = CURSOR_POS;
+                        popupManager->OpenPopup(WindowPopups::PasteTrigger);
                         break;
                     }
+                case NodeType::Fsm:
+                    break;
                 }
             }
 
             //Draw lines for creating links
-            if (const auto selectedNode = nodeEditor->GetSelectedNode();
-                selectedNode && ImGui::IsWindowHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Right))
+            if (ImGui::IsWindowHovered() || ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows))
             {
-                if ((selectedNode->GetType() == NodeType::State
-                    && nodeEditor->GetCurrentFsm()->GetState(selectedNode->GetId())
-                    && !nodeEditor->GetCurrentFsm()->GetState(selectedNode->GetId())->IsExitState())
-                    || selectedNode->GetType() == NodeType::Transition)
+                if (const auto selectedNode = nodeEditor->GetSelectedNode();
+                    selectedNode && ImGui::IsMouseDragging(ImGuiMouseButton_Right))
                 {
-                    NodeEditor::DrawLine(selectedNode->GetFromPoint(ImGui::GetMousePos()), ImGui::GetMousePos());
-                    NodeEditor::Get()->SetCreatingLink(true);
-                }
-            }
-            //Drawing finished
-            if (NodeEditor::Get()->IsCreatingLink() && ImGui::IsWindowHovered() && !ImGui::IsMouseDown(ImGuiMouseButton_Right))
-            {
-                if (const auto parentNode = nodeEditor->GetSelectedNode(); parentNode)
-                {
-                    CURSOR_POS = ImGui::GetMousePos() - CANVAS_POS + ImVec2{ImGui::GetScrollX(), ImGui::GetScrollY()} / nodeEditor->GetScale();
-                    switch (parentNode->GetType())
+                    if ((selectedNode->GetType() == NodeType::State
+                        && nodeEditor->GetCurrentFsm()->GetState(selectedNode->GetId())
+                        && !nodeEditor->GetCurrentFsm()->GetState(selectedNode->GetId())->IsExitState())
+                        || selectedNode->GetType() == NodeType::Transition)
                     {
+                        NodeEditor::DrawLine(selectedNode->GetFromPoint(ImGui::GetMousePos()), ImGui::GetMousePos());
+                        NodeEditor::Get()->SetCreatingLink(true);
+                    }
+                }
+                //Drawing finished
+                if (NodeEditor::Get()->IsCreatingLink() && !ImGui::IsMouseDown(ImGuiMouseButton_Right)
+                && !popupManager->GetPopup<Popup>(WindowPopups::AddStateCursor)->isOpen
+                && !popupManager->GetPopup<Popup>(WindowPopups::AddTriggerCursor)->isOpen
+                )
+                {
+                    if (const auto parentNode = nodeEditor->GetSelectedNode(); parentNode)
+                    {
+                        ADD_ELEMENTS_MENU = false;
+                        nodeEditor->SetShowNodeContext(false);
+                        CURSOR_POS = ImGui::GetMousePos() - CANVAS_POS + ImVec2{ImGui::GetScrollX(), ImGui::GetScrollY()} / nodeEditor->GetScale();
+                        switch (parentNode->GetType())
+                        {
                         case NodeType::State:
-                        {
-                            const auto popup = dynamic_cast<AddTriggerPopup*>(GetPopupManager()->GetPopup(static_cast<int>(WindowPopups::AddTriggerCursor)).get());
-                            popup->position = CURSOR_POS;
-                            popup->Open();
-                            break;
-                        }
+                            {
+                                const auto popup = popupManager->GetPopup<AddTriggerPopup>(WindowPopups::AddTriggerCursor);
+                                popup->position = CURSOR_POS;
+                                popup->isDrawn = true;
+                                popupManager->OpenPopup(WindowPopups::AddTriggerCursor);
+                                break;
+                            }
                         case NodeType::Transition:
-                        {
-                            const auto popup = dynamic_cast<AddStatePopup*>(GetPopupManager()->GetPopup(static_cast<int>(WindowPopups::AddStateCursor)).get());
-                            popup->position = CURSOR_POS;
-                            popup->Open();
+                            {
+                                const auto popup = popupManager->GetPopup<AddStatePopup>(WindowPopups::AddStateCursor);
+                                popup->position = CURSOR_POS;
+                                popup->isDrawn = true;
+                                popupManager->OpenPopup(WindowPopups::AddStateCursor);
+                                break;
+                            }
+                        case NodeType::Fsm:
                             break;
                         }
                     }
                 }
-                nodeEditor->SetCreatingLink(false);
+                else if (!ImGui::IsMouseDragging(ImGuiMouseButton_Right) && !nodeEditor->IsCreatingLink() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)
+                && !popupManager->GetPopup<Popup>(WindowPopups::AddStateCursor)->isOpen
+                && !nodeEditor->ShowNodeContext()
+                && !popupManager->GetPopup<Popup>(WindowPopups::AddTriggerCursor)->isOpen)
+                {
+                    CURSOR_POS = ImGui::GetMousePos() - CANVAS_POS + ImVec2{ImGui::GetScrollX(), ImGui::GetScrollY()} / nodeEditor->GetScale();
+                    ADD_ELEMENTS_MENU = true;
+                }
             }
             
-            if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
+            if (nodeEditor->GetSelectedNode() && nodeEditor->ShowNodeContext())
+            {
+                const std::string label = "##NodeContext" + nodeEditor->GetSelectedNode()->GetId();
+                ImGui::OpenPopup(label.c_str());
+                if (ImGui::BeginPopup(label.c_str()))
+                {
+                    ImGui::Selectable("Copy");
+                    if (ImGui::IsItemClicked())
+                    {
+                        nodeEditor->CopyNode(nodeEditor->GetSelectedNode());
+                        nodeEditor->SetShowNodeContext(false);
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::Selectable("Delete");
+                    if (ImGui::IsItemClicked())
+                    {
+                        if (nodeEditor->GetSelectedNode()->GetType() == NodeType::State)
+                        {
+                            nodeEditor->GetCurrentFsm()->RemoveState(nodeEditor->GetSelectedNode()->GetId());
+                            nodeEditor->SetShowNodeContext(false);
+                        }
+                        else if (nodeEditor->GetSelectedNode()->GetType() == NodeType::Transition)
+                        {
+                            nodeEditor->GetCurrentFsm()->RemoveTrigger(nodeEditor->GetSelectedNode()->GetId());
+                            nodeEditor->SetShowNodeContext(false);
+                        }
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::EndPopup();
+                }
+            }
+            
+            if (ADD_ELEMENTS_MENU
+                && !popupManager->GetPopup<Popup>(WindowPopups::AddStateCursor)->isOpen
+                && !popupManager->GetPopup<Popup>(WindowPopups::AddTriggerCursor)->isOpen
+                )
+            {
+                bool addState = false;
+                bool addTrigger = false;
+                bool pasteState = false;
+                bool pasteTrigger = false;
+                if (ImGui::BeginPopupContextWindow())
+                {
+                    if (ImGui::MenuItem("Add State"))
+                    {
+                        const auto popup = popupManager->GetPopup<AddStatePopup>(WindowPopups::AddStateCursor);
+                        popup->position = CURSOR_POS;
+                        popup->isDrawn = false;
+                        ADD_ELEMENTS_MENU = false;
+                        addState = true;
+                    }
+                    if (ImGui::MenuItem("Add Trigger"))
+                    {
+                        const auto popup = popupManager->GetPopup<AddTriggerPopup>(WindowPopups::AddTriggerCursor);
+                        popup->position = CURSOR_POS;
+                        popup->isDrawn = false;
+                        ADD_ELEMENTS_MENU = false;
+                        addTrigger = true;
+                    }
+                    if (nodeEditor->GetCopiedNode() && ImGui::MenuItem("Paste"))
+                    {
+                        switch (nodeEditor->GetCopiedNode()->GetType())
+                        {
+                        case NodeType::State:
+                            {
+                                popupManager->GetPopup<AddStatePopup>(WindowPopups::PasteState)->position = CURSOR_POS;
+                                pasteState = true;
+                                break;
+                            }
+                        case NodeType::Transition:
+                            {
+                                popupManager->GetPopup<AddTriggerPopup>(WindowPopups::PasteTrigger)->position = CURSOR_POS;
+                                pasteTrigger = true;
+                                break;
+                            }
+                        case NodeType::Fsm:
+                            break;
+                        }
+                    }
+                    ImGui::EndPopup();
+                }
+                if (addState)
+                    popupManager->OpenPopup(WindowPopups::AddStateCursor);
+                if (addTrigger)
+                    popupManager->OpenPopup(WindowPopups::AddTriggerCursor);
+                if (pasteState)
+                    popupManager->OpenPopup(WindowPopups::PasteState);
+                if (pasteTrigger)
+                    popupManager->OpenPopup(WindowPopups::PasteTrigger);
+            }
+            
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Right) && !ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows))
                 nodeEditor->SetCreatingLink(false);
             
-            ImGui::PopStyleVar(); //ImGuiStyleVar_WindowPadding
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                nodeEditor->SetShowNodeContext(false);
+            
             ImGui::SetWindowFontScale(1.0f);
             
             GetPopupManager()->ShowOpenPopups();
@@ -596,11 +732,14 @@ namespace LuaFsm
         //Pan Middle Mouse Drag
         if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
         {
+            nodeEditor->SetPanning(true);
             const ImVec2 delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
             ImGui::SetScrollX(ImGui::GetScrollX() - delta.x);
             ImGui::SetScrollY(ImGui::GetScrollY() - delta.y);
             ImGui::ResetMouseDragDelta(ImGuiMouseButton_Middle);
         }
+        else
+            nodeEditor->SetPanning(false);
 
         //Drag arrow curves
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
@@ -665,6 +804,10 @@ namespace LuaFsm
             if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
                 nodeEditor->GetCurrentFsm()->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
         }
+
+        //View FSM properties
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+            nodeEditor->DeselectAllNodes();
     }
 
     void Window::DragArrows(VisualNode* existingCurveNode)
@@ -755,6 +898,10 @@ namespace LuaFsm
     }
 
     bool PROPERTIES_OPEN = true;
+    uint32_t PROPERTIES_FLAGS =
+        ImGuiWindowFlags_NoBringToFrontOnFocus
+        | ImGuiWindowFlags_MenuBar
+        | ImGuiWindowFlags_NoCollapse;
 
     //Properties on the right side of the screen
     void Window::Properties()
@@ -763,8 +910,32 @@ namespace LuaFsm
         const auto fsm = nodeEditor->GetCurrentFsm();
         if (!fsm)
             return;
-        
-        ImGui::Begin("Properties", &PROPERTIES_OPEN, ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoMove);
+        const auto selectedNode = nodeEditor->GetSelectedNode();
+        const auto nodeType = selectedNode ? selectedNode->GetType() : NodeType::Fsm;
+        if (nodeType == NodeType::State)
+        {
+            if (const auto state = fsm->GetState(selectedNode->GetId());
+                state->IsUnSaved())
+                PROPERTIES_FLAGS |= ImGuiWindowFlags_UnsavedDocument;
+            else
+                PROPERTIES_FLAGS &= ~ImGuiWindowFlags_UnsavedDocument;
+        }
+        else if (nodeType == NodeType::Transition)
+        {
+            if (const auto trigger = fsm->GetTrigger(selectedNode->GetId());
+                trigger->IsUnSaved())
+                PROPERTIES_FLAGS |= ImGuiWindowFlags_UnsavedDocument;
+            else
+                PROPERTIES_FLAGS &= ~ImGuiWindowFlags_UnsavedDocument;
+        }
+        else
+        {
+            if (fsm->IsUnSaved())
+                PROPERTIES_FLAGS |= ImGuiWindowFlags_UnsavedDocument;
+            else
+                PROPERTIES_FLAGS &= ~ImGuiWindowFlags_UnsavedDocument;
+        }
+        ImGui::Begin("Properties", nullptr, PROPERTIES_FLAGS);
         {
 
             if (PROPERTIES_FIRST_TIME && fsm->GetLinkedFile().empty())
@@ -776,24 +947,93 @@ namespace LuaFsm
             //show fsm properties
             if (nodeEditor->ShowFsmProps())
                 fsm->DrawProperties();
-            
             //show selected node properties
-            if (const auto node = nodeEditor->GetSelectedNode(); node)
+            else if (selectedNode)
             {
-                if (const auto type = node->GetType(); type == NodeType::State)
+                if (nodeType == NodeType::State)
                 {
-                    if (const auto state = fsm->GetState(node->GetId()))
+                    if (const auto state = fsm->GetState(selectedNode->GetId()))
                         state->DrawProperties();
                 }
-                else if (type == NodeType::Transition)
+                else if (nodeType == NodeType::Transition)
                 {
-                    if (const auto trigger = fsm->GetTrigger(node->GetId()))
+                    if (const auto trigger = fsm->GetTrigger(selectedNode->GetId()))
                         trigger->DrawProperties();
                 }
             }
             else //if no selected nodes show fsm properties
                 nodeEditor->SetShowFsmProps(true);
             
+            ImGui::End();
+        }
+    }
+
+    void Window::HelpWindow()
+    {
+        if (!HELP_WINDOW_OPEN)
+            return;
+        const auto viewPort = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewPort->Pos + ImVec2(viewPort->Size.x * 0.2f, viewPort->Size.y * 0.2f), ImGuiCond_Once);
+        ImGui::SetNextWindowSize({viewPort->Size.x * 0.6f, viewPort->Size.y * 0.6f}, ImGuiCond_Once);
+        ImGui::Begin("Help", &HELP_WINDOW_OPEN,
+            ImGuiWindowFlags_NoDocking
+            | ImGuiWindowFlags_NoCollapse);
+        {
+            ImGui::Text("Keybindings:");
+            ImGui::Separator();
+            ImGui::Text("F4 - Load from file");
+            ImGui::Text("F5 - Save to file");
+            ImGui::Separator();
+            ImGui::Text("Canvas:");
+            ImGui::Separator();
+            ImGui::Text("Middle mouse (hold) - Pan Canvas");
+            ImGui::Text("Ctrl + mouse scroll - Zoom Canvas");
+            ImGui::Text("Ctrl + S - Save");
+            ImGui::Text("Ctrl + C - Copy node");
+            ImGui::Text("Ctrl + V - Paste node");
+            ImGui::Text("Linking:");
+            ImGui::Separator();
+            ImGui::Text("Hold right mouse from node - Start link");
+            ImGui::Text("Release on another node - Create connection");
+            ImGui::Text("Release on empty canvas space - Create node");
+            ImGui::Separator();
+            ImGui::Text("Help:");
+            ImGui::TextWrapped(R"(
+A state machine works by having an initial state and a set of transitions that can be triggered. 
+
+When a state gets first entered it executes the code inside the OnEnter block. 
+You can also use the onUpdate block if your FSM has persistent states between events and does not start from 
+the initial state each time you enter it. When it leaves the state onExit fires. 
+
+Each transition has a condition that must be met for the transition to occur. If the condition is met, the code 
+in the 'action' section of that condition gets executed. If there is a next state, the state machine will transition to 
+that state. If there is not a next state or the next state is not an exit state and that path has been fully explored
+it will evaluate the next condition until all conditions have been evaluated and none are met or it reaches an exit state. 
+
+If it reaches an exit state the state machine will stop executing. 
+
+The Lua code is included in FSM.lua. The FSM, states and conditions extend classes created in that file. These are quite
+basic and can easily be modified for specific use cases. The program uses regex to update the file and read from it, you
+can fill it with your own code otherwise as long as you keep the format the program can read for the few things that it 
+reads and writes to the file. 
+
+You declare the FSM, states and conditions with:
+---@FSM (variable name of a class that extends FSM)
+---@FSM_STATE (variable name of a class that extends FSM_STATE)
+---@FSM_CONDITION (variable name of a class that extends FSM_CONDITION)
+respectively.
+
+If you remove those annotations from your table then the program will stop interacting with that table and will act
+like those states/conditions have been deleted. To make the regex easier and more reliable key functions have to end with
+---@endFunc on the same line as 'end'. Like below:
+
+end---@endFunc
+
+It reads the class fields that are important to the program in the variableName.field format. If it lacks those fields
+it won't update them from the program. It doesn't add every function by default to not clutter the file, if you use 
+a new inherited function and want your changes to sync then add it to your file manually. You can see blueprints of the 
+format the program expects in the Lua Code sections of each properties page.
+)");
             ImGui::End();
         }
     }

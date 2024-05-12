@@ -1,7 +1,9 @@
 ﻿#pragma once
+#include <json.hpp>
 #include <spdlog/fmt/bundled/format.h>
 
 #include "imgui.h"
+#include "ImGuiNotify.hpp"
 #include "data/Fsm.h"
 #include "Graphics/VisualNode.h"
 
@@ -10,16 +12,28 @@ namespace LuaFsm
 
     struct FsmRegex
     {
+        
         static std::regex ClassStringRegex(const std::string &id, const std::string &fieldName)
         {
-            const auto string =  fmt::format(R"({0}\.{1}\s*=\s*\"([\sa-zA-Z0-9_-]*)\")", id, fieldName);
+            const auto string =  fmt::format(R"({0}\.{1}\s*=\s*\"((?:.|\s)*?)\"$)", id, fieldName);
             std::regex regex(string);
             return regex;
         }
         
         static std::regex InvalidIdRegex()
         {
-            const auto string = R"((?:\s|,|\.|\/|\\|\(|\)|\[|\]|\{|\}|\*|\+|\?|\^|\$|\||\!|\@|\#|\%|\&|\=|\:|\;|\"|\'|\<|\>|\`|\~|\-))";
+            std::string string = "(";
+            string += R"(?:^[0-9]|\s|,|\.|\/|\\|\(|\)|\[|\]|\{|\}|\*|\+|\?|\^|\$|\||\!|\@|\#|\%|\&|\=|\:|\;|\"|\'|\<|\>|\`|\~|\-)";
+            for (const std::array<std::string, 23> luaKeywords {
+                     "and", "break", "do", "else", "elseif", "end",
+                     "false", "for", "function", "goto", "if", "in",
+                     "local", "nil", "not", "or", "repeat", "require",
+                     "return", "then", "true", "until", "while"};
+                     const auto& keyword : luaKeywords)
+            {
+                string += "|\\b" + keyword + "\\b";
+            }
+            string += ")";
             std::regex regex(string);
             return regex;
         }
@@ -80,6 +94,20 @@ namespace LuaFsm
             std::regex regex(string);
             return regex;
         }
+
+        static std::regex IdRegexClassAnnotation(const std::string &classType, const std::string &className)
+        {
+            const auto string = fmt::format(R"((class\s+\b{0}\b\s*\:\s*\b{1}\b))", className, classType);
+            std::regex regex(string);
+            return regex;
+        }
+
+        static std::regex IdRegexClassDeclaration(const std::string &classType, const std::string &className)
+        {
+            const auto string = fmt::format(R"((\b{0}\b\s*\=\s*\b{1}\b\:new))", className, classType);
+            std::regex regex(string);
+            return regex;
+        }
         
         static std::string FunctionNameString(const std::string &id, const std::string &funcName)
         {
@@ -120,20 +148,39 @@ namespace LuaFsm
         ~NodeEditor();
 
         //Canvas position
-        [[nodiscard]] ImVec2 GetCanvasPos() const { return m_CanvasPos; }
+        [[nodiscard]] ImVec2 GetCanvasPos()
+        {
+            if (const auto canvas = GetCanvasWindow())
+                m_CanvasPos = canvas->Pos;
+            return m_CanvasPos;
+        }
         void SetCanvasPos(const ImVec2& pos) { m_CanvasPos = pos; }
 
         //Canvas size
-        [[nodiscard]] ImVec2 GetCanvasSize() const { return m_CanvasSize; }
+        [[nodiscard]] ImVec2 GetCanvasSize()
+        {
+            if (const auto canvas = GetCanvasWindow())
+                m_CanvasSize = canvas->Size;
+            return m_CanvasSize;
+        }
         void SetCanvasSize(const ImVec2& size) { m_CanvasSize = size; }
+
+        [[nodiscard]] ImVec2 GetCanvasScroll() const
+        {
+            if (const auto canvas = GetCanvasWindow())
+                return canvas->Scroll;
+            return {0, 0};
+        }
+
+        void SetCanvasScroll(const ImVec2& scroll) const
+        {
+            if (const auto canvas = GetCanvasWindow())
+                canvas->Scroll = scroll;
+        }
 
         //Font
         [[nodiscard]] ImFont* GetFont() const { return m_Font; }
         void SetFont(ImFont* font) { m_Font = font; }
-
-        //Last node position
-        [[nodiscard]] ImVec2 GetLastNodePos() const { return m_LastNodePos; }
-        void SetLastNodePos(const ImVec2& pos) { m_LastNodePos = pos; }
 
         //Selected nodes
         [[nodiscard]] VisualNode* GetSelectedNode() const { return m_SelectedNode; }
@@ -163,6 +210,11 @@ namespace LuaFsm
 
         void CopyNode(VisualNode* node) { m_CopiedNode = node; }
         [[nodiscard]] VisualNode* GetCopiedNode() const { return m_CopiedNode; }
+
+        nlohmann::json SerializeSettings() const;
+        void SaveSettings() const;
+        void LoadSettings();
+        void DeserializeSettings(const nlohmann::json& settings);
         
         float GetScale() const { return m_Scale; }
         void SetScale(const float scale) { m_Scale = scale; }
@@ -178,7 +230,7 @@ namespace LuaFsm
 
         IdValidityError CheckIdValidity(const std::string& id) const;
         static void InformValidityError(IdValidityError error);
-        void MoveToNode(const std::string& id);
+        void MoveToNode(const std::string& id, const NodeType type);
 
         void SetCurveNode(VisualNode* node) { m_CurveNode = node; }
         [[nodiscard]] VisualNode* GetCurveNode() const { return m_CurveNode; }
@@ -186,7 +238,19 @@ namespace LuaFsm
         bool AppendStates() const { return m_AppendStates; }
         void SetAppendStates(const bool appendStates) { m_AppendStates = appendStates; }
 
-        void MoveToNode(const std::string& id) const;
+        bool ShowPriority() const { return m_ShowPriority; }
+        void SetShowPriority(const bool show) { m_ShowPriority = show; }
+
+        ImVec2 GetDragOffset() const { return m_DragOffset; }
+        void SetDragOffset(const ImVec2& offset) { m_DragOffset = offset; }
+        
+        bool ShowNodeContext() const { return m_ShowNodeContext; }
+        void SetShowNodeContext(const bool show) { m_ShowNodeContext = show; }
+
+        bool IsPanning() const { return m_IsPanning; }
+        void SetPanning(const bool panning) { m_IsPanning = panning; }
+
+        [[nodiscard]] ImGuiWindow* GetCanvasWindow() const { return ImGui::FindWindowByName(canvasName.c_str()); }
         
     public:
         inline static uint32_t nodeWindowFlags = ImGuiWindowFlags_NoCollapse
@@ -196,18 +260,19 @@ namespace LuaFsm
             | ImGuiWindowFlags_NoDocking
             | ImGuiWindowFlags_NoResize
             | ImGuiWindowFlags_NoTitleBar;
-        
-
+        std::string canvasName = "Canvas";
+    
     private:
-        ImVec2 m_LastNodePos{0, 0};
         ImVec2 m_CanvasPos{0, 0};
         ImVec2 m_CanvasSize{0, 0};
+        ImVec2 m_DragOffset{0, 0};
         VisualNode* m_SelectedNode = nullptr;
-        VisualNode* m_LastNode = nullptr;
         bool m_ShowFsmProps = false;
         bool m_IsDragging = false;
         bool m_IsSettingInCurve = false;
         bool m_IsSettingOutCurve = false;
+        bool m_ShowNodeContext = false;
+        bool m_IsPanning = false;
         VisualNode* m_CurveNode = nullptr;
         VisualNode* m_CopiedNode = nullptr;
         ImFont* m_Font = nullptr;
@@ -216,6 +281,7 @@ namespace LuaFsm
         static NodeEditor* m_Instance;
         float m_Scale = 1.0f;
         bool m_AppendStates = true;
+        bool m_ShowPriority = false;
     };
     
 }

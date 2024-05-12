@@ -1,34 +1,11 @@
 ﻿#include "pch.h"
 #include "VisualNode.h"
 
-#include "imgui_internal.h"
 #include "data/DrawableObject.h"
 #include "imgui/NodeEditor.h"
 
 namespace LuaFsm
 {
-    ImVec2 VisualNode::GetPosition()
-    {
-        if (m_TargetPosition.x < 1 && m_TargetPosition.y < 1)
-            return m_TargetPosition;
-        
-        ImVec2 canvasPos = ImGui::GetWindowPos();
-        const ImVec2 canvasSize = ImGui::GetWindowSize();
-        const ImVec2 canvasEnd = ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y);
-        // Adjust the node position for scrolling
-        ImVec2 scrollingOffset = {ImGui::GetScrollX() / 5, ImGui::GetScrollY() / 5};
-        auto adjustedPos = ImVec2(canvasPos.x + m_TargetPosition.x - scrollingOffset.x, canvasPos.y + m_TargetPosition.y  - scrollingOffset.y);
-        const auto nodeEnd = ImVec2(adjustedPos.x + m_Size.x, adjustedPos.y + m_Size.y);
-        adjustedPos = adjustedPos * NodeEditor::Get()->GetScale();
-        // Check if the node is off-screen
-        if (adjustedPos.x < canvasPos.x || nodeEnd.x > canvasEnd.x * (1 / NodeEditor::Get()->GetScale()) ||
-            adjustedPos.y < canvasPos.y || nodeEnd.y > canvasEnd.y * (1 / NodeEditor::Get()->GetScale()))
-        {
-            return {-1, -1}; // Node is off-screen, don't draw
-        }
-        return adjustedPos;
-    }
-
     
     ImVec2 VisualNode::InitSizes(const std::string& name)
     {
@@ -58,7 +35,7 @@ namespace LuaFsm
                     m_Center = {m_Size.x / 2.f, m_Size.y / 2.f};
                     return m_Size;
                 }
-            case NodeShape::Square:
+            case NodeShape::Square:  // NOLINT(bugprone-branch-clone)
                 {
                     return {0, 0};
                 }
@@ -81,37 +58,39 @@ namespace LuaFsm
         ImGui::SetWindowFontScale(editor->GetScale());
         m_Size = InitSizes(object->GetName());
         ImGui::SetCursorPos(m_GridPos * editor->GetScale());
-        ImGui::BeginChild(
-            label.c_str(),
-            m_Size,
-            ImGuiChildFlags_None,NodeEditor::nodeWindowFlags);
+        ImGui::BeginChild(label.c_str(), m_Size, ImGuiChildFlags_None,NodeEditor::nodeWindowFlags);
         {
-            //const ImVec2 canvasPos = ImGui::GetWindowPos();
-            ImVec2 canvasPos = ImGui::GetItemRectMin();
+            const ImVec2 canvasPos = ImGui::GetItemRectMin();
             auto drawList = ImGui::GetWindowDrawList();
             m_LastPosition = (canvasPos + m_Center);
             HandleSelection(editor);
             if (m_Shape == NodeShape::Ellipse)
             {
                 drawList->AddEllipseFilled(m_LastPosition,  m_EllipseRadius, GetCurrentColor());
-                if (NodeEditor::Get()->GetCurrentFsm()->GetInitialStateId() == m_Id)
-                    drawList->AddEllipse(m_LastPosition, m_EllipseRadius, IM_COL32(0, 255, 0, 255), 0, 0, 2.f);
-                else if (const auto state = NodeEditor::Get()->GetCurrentFsm()->GetState(m_Id); state && state->IsExitState())
-                    drawList->AddEllipse(m_LastPosition, m_EllipseRadius, IM_COL32(255, 0, 0, 255), 0,0, 2.f);
-                else
-                    drawList->AddEllipse(m_LastPosition, m_EllipseRadius, GetBorderColor(), 0,0, 2.f);
+                auto borderColor = GetBorderColor();
+                if (m_Type == NodeType::State)
+                {
+                    if (const auto fsm = editor->GetCurrentFsm(); fsm->GetInitialStateId() == m_Id)
+                        borderColor =  IM_COL32(0, 255, 0, 255);
+                    else if (const auto state = fsm->GetState(m_Id); state && state->IsExitState())
+                        borderColor =  IM_COL32(255, 0, 0, 255);
+                }
+                drawList->AddEllipse(m_LastPosition, m_EllipseRadius, borderColor, 0,0, 2.f);
                 const auto textColor = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]);
                 drawList->AddText(GetTextPos(object->GetName().c_str()), textColor, object->GetName().c_str());
             }
             else if (m_Shape == NodeShape::Circle)
             {
                 drawList->AddCircleFilled(m_LastPosition, m_Radius, GetCurrentColor());
-                if (NodeEditor::Get()->GetCurrentFsm()->GetInitialStateId() == m_Id)
-                    drawList->AddCircle(m_LastPosition, m_Radius, IM_COL32(0, 255, 0, 255), 0, 2.f);
-                else if (const auto state = NodeEditor::Get()->GetCurrentFsm()->GetState(m_Id); state && state->IsExitState())
-                    drawList->AddCircle(m_LastPosition, m_Radius, IM_COL32(255, 0, 0, 255), 0, 2.f);
-                else
-                    drawList->AddCircle(m_LastPosition, m_Radius, GetBorderColor(), 0, 2.f);
+                auto borderColor = GetBorderColor();
+                if (m_Type == NodeType::State)
+                {
+                    if (const auto fsm = editor->GetCurrentFsm(); fsm->GetInitialStateId() == m_Id)
+                        borderColor =  IM_COL32(0, 255, 0, 255);
+                    else if (const auto state = fsm->GetState(m_Id); state && state->IsExitState())
+                        borderColor =  IM_COL32(255, 0, 0, 255);
+                }
+                drawList->AddCircle(m_LastPosition, m_Radius, borderColor, 0, 2.f);
             }
             ImGui::EndChild();
             if (m_Type == NodeType::Transition)
@@ -122,32 +101,51 @@ namespace LuaFsm
                 const auto trigger = editor->GetCurrentFsm()->GetTrigger(m_Id);
 
                 const auto textSize = ImGui::CalcTextSize(object->GetName().c_str());
+                const std::string priority = fmt::format("priority: {0}", trigger->GetPriority());
                 ImVec2 position;
-                if ((m_LastConnectionPoint.x > GetLastDrawPos().x && abs(m_LastConnectionPoint.y - GetLastDrawPos().y) < m_Radius * 0.7))
+                ImVec2 positionPriority;
+                if (
+                    (!editor->IsPanning() && m_LastConnectionPoint.x > GetLastDrawPos().x && abs(m_LastConnectionPoint.y - GetLastDrawPos().y) < m_Radius * 0.9)
+                    || (editor->IsPanning() && m_TextLeft)
+                    )
                 {
                     // Move text to the left
                     const auto xPos = Math::SubtractVec2X(leftBound, 3.0f + textSize.x);
                     position = Math::SubtractVec2Y(xPos, textSize.y * 0.5f);
+                    positionPriority = Math::SubtractVec2X(leftBound, 3.0f + ImGui::CalcTextSize(priority.c_str()).x);
+                    positionPriority = Math::SubtractVec2Y(positionPriority, textSize.y * 0.5f);
+                    positionPriority = Math::AddVec2Y(positionPriority, textSize.y);
+                    m_TextLeft = true;
                 }
                 else
                 {
                     // Default position
                     const auto xPos = Math::AddVec2X(rightBound, 3.0f);
                     position = Math::SubtractVec2Y(xPos, textSize.y * 0.5f);
+                    positionPriority = {position.x, position.y + textSize.y};
+                    m_TextLeft = false;
                 }
-
                 drawList->AddText(position, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_Text]), object->GetName().c_str());
+                if (NodeEditor::Get()->ShowPriority())
+                {
+                    auto color = ImGui::GetStyle().Colors[ImGuiCol_Text];
+                    color.w = 0.5f;
+                    drawList->AddText(positionPriority, ImGui::ColorConvertFloat4ToU32(color), priority.c_str());
+                }
             }
         }
         ImGui::SetWindowFontScale(1.0f);
         return this;
     }
 
+    bool SHOW_NODE_CONTEXT = false;
+
     void VisualNode::HandleSelection(NodeEditor* editor)
     {
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows))
         {
-            HighLight();
+            if (!IsSelected())
+                HighLight();
             switch (m_Type)
             {
             case NodeType::State:
@@ -170,9 +168,14 @@ namespace LuaFsm
                     }
                 }
                 break;
+            case NodeType::Fsm:
+                break;
             }
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+            if (!IsSelected() && (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right)))
+            {
                 editor->SetSelectedNode(this);
+                editor->SetShowNodeContext(false);
+            }
             if (editor->IsCreatingLink() && !IsSelected() && !ImGui::IsMouseDown(ImGuiMouseButton_Right))
             {
                 if (const auto otherNode = editor->GetSelectedNode(); otherNode && otherNode != this)
@@ -187,7 +190,11 @@ namespace LuaFsm
                                 if (!trigger || trigger->GetCurrentState())
                                     return;
                                 if (const auto state = editor->GetCurrentFsm()->GetState(otherNode->GetId()))
+                                {
                                     state->AddTrigger(trigger);
+                                    editor->SetCreatingLink(false);
+                                    editor->SetShowNodeContext(false);
+                                }
                                 break;
                             }
                         case NodeType::Transition:
@@ -197,18 +204,29 @@ namespace LuaFsm
                                 if (!editor->GetCurrentFsm()->GetState(m_Id))
                                     return;
                                 if (const auto fsmTrigger = editor->GetCurrentFsm()->GetTrigger(otherNode->GetId()))
+                                {
                                     fsmTrigger->SetNextState(m_Id);
+                                    editor->SetCreatingLink(false);
+                                    editor->SetShowNodeContext(false);
+                                }
                                 break;
                             }
+                    case NodeType::Fsm:
+                        break;
                     }
                 }
                 editor->SetCreatingLink(false);
             }
-            if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))
-                editor->SetCreatingLink(false);
+            else if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) && IsSelected())
+            {
+                editor->SetShowNodeContext(true);
+            }
             if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && IsSelected())
             {
+                if (!editor->IsDragging())
+                    editor->SetDragOffset(ImGui::GetMousePos() - GetLastDrawPos());
                 editor->SetDragging(true);
+                editor->SetShowNodeContext(false);
             }
             if (ImGui::IsKeyPressed(ImGuiKey_C)
                 && ImGui::IsKeyDown(ImGuiKey_LeftCtrl)
@@ -217,8 +235,10 @@ namespace LuaFsm
                 editor->CopyNode(this);
             }
         }
-        else if (!IsSelected())
+        else if (!IsSelected() && !m_IsHighlighted)
+        {
             UnHighLight();
+        }
     }
 
     ImVec2 VisualNode::GetTextPos(const char* text)

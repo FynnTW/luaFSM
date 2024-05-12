@@ -5,6 +5,7 @@
 
 #include "ImGuiNotify.hpp"
 #include "Graphics/Window.h"
+#include "IO/FileReader.h"
 
 namespace LuaFsm
 {
@@ -59,7 +60,7 @@ namespace LuaFsm
 
         if (curve > 0.01f || curve < -0.01f && fromNode && targetNode)
         {
-            ImVec2 controlPoint = midPoint + perpendicular * (lineLength * curve);
+            const ImVec2 controlPoint = midPoint + perpendicular * (lineLength * curve);
             if (fromNode->GetType() == NodeType::Transition)
             {
                 color = ImColor(155, 255, 155, 255);
@@ -70,12 +71,12 @@ namespace LuaFsm
                 color = ImColor(255, 155, 155, 255);
                 targetNode->SetInLineMidPoint(controlPoint);
             }
-            ImVec2 newFromPos = fromNode->GetFromPoint(controlPoint);
-            ImVec2 newToPos = targetNode->GetFromPoint(controlPoint);
+            const ImVec2 newFromPos = fromNode->GetFromPoint(controlPoint);
+            const ImVec2 newToPos = targetNode->GetFromPoint(controlPoint);
             targetNode->SetLastConnectionPoint(newToPos);
 
             // Calculate the tangent at the end of the Bezier curve
-            ImVec2 tangent = normalize(newToPos - controlPoint);
+            const ImVec2 tangent = normalize(newToPos - controlPoint);
 
             // Adjust the arrowhead direction to align with the tangent
             arrowTip = newToPos;
@@ -122,6 +123,43 @@ namespace LuaFsm
                  curve,fromNode,toNode);
     }
 
+    void NodeEditor::DeserializeSettings(const nlohmann::json& settings)
+    {
+        if (settings.contains("appendToFile"))
+            m_AppendStates = settings["appendToFile"];
+        if (settings.contains("showPriority"))
+            m_ShowPriority = settings["showPriority"];
+        if (settings.contains("defaultPath"))
+            FileReader::lastPath = settings["defaultPath"];
+        if (settings.contains("defaultTheme"))
+            Window::SetTheme(settings["defaultTheme"]);
+    }
+
+    nlohmann::json NodeEditor::SerializeSettings() const
+    {
+        nlohmann::json settings;
+        settings["appendToFile"] = m_AppendStates;
+        settings["showPriority"] = m_ShowPriority;
+        settings["defaultPath"] = FileReader::lastPath;
+        settings["defaultTheme"] = Window::GetActiveTheme();
+        return settings;
+    }
+
+    void NodeEditor::SaveSettings() const
+    {
+        FileReader::SaveFile("settings.json", SerializeSettings().dump(4));
+    }
+
+    void NodeEditor::LoadSettings()
+    {
+        if (!FileReader::FileExists("settings.json"))
+            return;
+        const auto code = FileReader::ReadAllText("settings.json");
+        if (code.empty())
+            return;
+        DeserializeSettings(nlohmann::json::parse(code));
+    }
+    
     void NodeEditor::ExportLua(const std::string& filePath) const
     {
         if (!m_Fsm)
@@ -176,14 +214,13 @@ namespace LuaFsm
         }
     }
 
-    void NodeEditor::MoveToNode(const std::string& id)
+    void NodeEditor::MoveToNode(const std::string& id, const NodeType type)
     {
-        VisualNode* node = GetNode(id);
+        VisualNode* node = GetNode(id, type);
         if (!node)
             return;
         SetSelectedNode(node);
-        if (ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas"))
-            canvas->Scroll = node->GetGridPos() - GetCanvasSize() / 2;
+        SetCanvasScroll(node->GetGridPos() - GetCanvasSize() / 2);
     }
 
     void NodeEditor::DeselectAllNodes()
@@ -212,6 +249,8 @@ namespace LuaFsm
             if (m_Fsm->GetTrigger(id))
                 return m_Fsm->GetTrigger(id)->GetNode();
             break;
+        case NodeType::Fsm:
+            break;
         }
         return nullptr;
     }
@@ -219,10 +258,10 @@ namespace LuaFsm
     void NodeEditor::SetSelectedNode(VisualNode* node)
     {
         DeselectAllNodes();
+        m_ShowFsmProps = false;
         if (!node)
             return;
         node->Select();
         m_SelectedNode = node;
-        m_ShowFsmProps = false;
     }
 }

@@ -103,6 +103,12 @@ namespace LuaFsm
         return buffer;
     }
 
+    bool FileReader::FileExists(const char* str)
+    {
+        const std::ifstream file(str);
+        return file.good();
+    }
+
     void FileReader::SaveFile(const std::string& path, const std::string& content)
     {
         std::ofstream file(path);

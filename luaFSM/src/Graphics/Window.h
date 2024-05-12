@@ -21,11 +21,11 @@ namespace LuaFsm
         ThemeEditor,
         LoadFile,
         CreateFilePopup,
-        AddStateMain,
         AddStateCursor,
         PasteState,
         AddTriggerCursor,
         PasteTrigger,
+        OptionsPopup,
     };
     
     struct WindowProps
@@ -93,6 +93,7 @@ namespace LuaFsm
         static TextEditor::Palette GetPalette() {return m_Palette;}
         static void BeginImGui();
         static void OnImGuiRender();
+        static void HelpWindow();
         static void DrawTextEditor(TextEditor& txtEditor, std::string& oldText);
         static void TrimTrailingNewlines(std::string& str);
         static void RenderNotifications();

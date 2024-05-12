@@ -4,16 +4,45 @@
 
 namespace LuaFsm
 {
+    
     class Popup
     {
     public:
-        //static IGFD::FileDialogConfig config;
-        virtual ~Popup() = default;
+        Popup(const Popup& other) = default;
+
+        Popup(Popup&& other) noexcept
+            : id(std::move(other.id)),
+              isOpen(other.isOpen)
+        {
+        }
+
+        Popup() = default;
+
+        Popup& operator=(const Popup& other)
+        {
+            if (this == &other)
+                return *this;
+            id = other.id;
+            isOpen = other.isOpen;
+            return *this;
+        }
+
+        Popup& operator=(Popup&& other) noexcept
+        {
+            if (this == &other)
+                return *this;
+            id = std::move(other.id);
+            isOpen = other.isOpen;
+            return *this;
+        }
+
+        virtual ~Popup();
         std::string id;
         virtual void DrawFields(){}
-        void Draw();
+        bool Draw();
         virtual void DrawButtons(){}
         virtual void Open();
+        virtual void Close();
         bool isOpen = false;
         static bool OpenFileDialog(
             const std::string& key,
@@ -28,18 +57,6 @@ namespace LuaFsm
         {
             return name + "##" + id;
         }
-    };
-
-    class PopupManager
-    {
-    public:
-        void AddPopup(int id, std::shared_ptr<Popup> popup);
-        void RemovePopup(int id);
-        std::shared_ptr<Popup> GetPopup(int id);
-        void OpenPopup(int id);
-        void ShowOpenPopups();
-    private:
-        std::unordered_map<int, std::shared_ptr<Popup>> m_Popups;
     };
     
     class AddFsmPopup : public Popup
@@ -163,8 +180,50 @@ namespace LuaFsm
         void DrawButtons() override;
     };
 
+    class OptionsPopUp : public Popup
+    {
+    public:
+        explicit OptionsPopUp();
+        bool appendToFile = true;
+        bool showPriority = false;
+        void DrawFields() override;
+        void DrawButtons() override;
+    };
 
-    
+    class PopupManager
+    {
+    public:
+        template<typename T>
+        void AddPopup(T id, const std::shared_ptr<Popup>& popup)
+        {
+            m_Popups[static_cast<int>(id)] = popup;
+        }
+        
+        template<typename T>
+        void RemovePopup(const T id)
+        {
+            if (m_Popups.contains(static_cast<int>(id)))
+                m_Popups.erase(static_cast<int>(id));
+        }
+        
+        template<typename ReturnType, typename T>
+        std::shared_ptr<ReturnType> GetPopup(const T id)
+        {
+            if (m_Popups.contains(static_cast<int>(id)))
+                return std::dynamic_pointer_cast<ReturnType>(m_Popups[static_cast<int>(id)]);
+            return {};
+        }
 
-    
+        template<typename T>
+        void OpenPopup(const T id)
+        {
+            if (m_Popups.contains(static_cast<int>(id)))
+                m_Popups[static_cast<int>(id)]->isOpen = true;
+        }
+        
+        void ShowOpenPopups();
+    private:
+        std::unordered_map<int, std::shared_ptr<Popup>> m_Popups;
+    };
+
 }

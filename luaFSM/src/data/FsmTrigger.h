@@ -26,8 +26,69 @@ namespace LuaFsm
     {
     public:
         FsmTrigger(const std::string& id);
+        
+        FsmTrigger(const FsmTrigger& other);
+        
         void UpdateEditors();
         void InitPopups();
+
+        bool operator==(const FsmTrigger& other) const
+        {
+            return m_Id == other.GetId()
+            && m_Name == other.GetName()
+            && m_Condition == other.GetCondition()
+            && m_Action == other.GetAction()
+            && m_CurrentStateId == other.GetCurrentStateId()
+            && m_NextStateId == other.GetNextStateId()     
+            && m_Node.GetGridPos() == other.GetNode().GetGridPos()
+            && m_Node.GetColor() == static_cast<ImVec4>(other.GetNode().GetColor());
+        }
+
+        bool operator==(FsmTrigger& other) const
+        {
+            return m_Id == other.GetId()
+            && m_Name == other.GetName()
+            && m_Condition == other.GetCondition()
+            && m_Action == other.GetAction()
+            && m_CurrentStateId == other.GetCurrentStateId()
+            && m_NextStateId == other.GetNextStateId()     
+            && m_Node.GetGridPos() == other.GetNode()->GetGridPos()
+            && m_Node.GetColor() == static_cast<ImVec4>(other.GetNode()->GetColor());
+        }
+        
+#define COMPARE_FLOATS(a, b) (fabs(a - b) < 0.0001)
+        
+        bool operator!=(const FsmTrigger& other) const
+        {
+            return m_Id != other.GetId()
+            || m_Name != other.GetName()
+            || m_Condition != other.GetCondition()
+            || m_Action != other.GetAction()
+            || m_CurrentStateId != other.GetCurrentStateId()
+            || m_NextStateId != other.GetNextStateId()     
+            || m_Node.GetGridPos() != other.GetNode().GetGridPos()
+            || !COMPARE_FLOATS(m_Node.GetInArrowCurve(), other.GetNode().GetInArrowCurve())
+            || !COMPARE_FLOATS(m_Node.GetOutArrowCurve(), other.GetNode().GetOutArrowCurve())
+            || m_Node.GetColor() != static_cast<ImVec4>(other.GetNode().GetColor());
+        }
+        
+        bool operator!=(FsmTrigger& other) const
+        {
+            return m_Id != other.GetId()
+            || m_Name != other.GetName()
+            || m_Condition != other.GetCondition()
+            || m_Action != other.GetAction()
+            || m_CurrentStateId != other.GetCurrentStateId()
+            || m_NextStateId != other.GetNextStateId()     
+            || m_Node.GetGridPos() != other.GetNode()->GetGridPos()
+            || !COMPARE_FLOATS(m_Node.GetInArrowCurve(), other.GetNode()->GetInArrowCurve())
+            || !COMPARE_FLOATS(m_Node.GetOutArrowCurve(), other.GetNode()->GetOutArrowCurve())
+            || m_Node.GetColor() != static_cast<ImVec4>(other.GetNode()->GetColor());
+        }
+
+        [[nodiscard]] bool IsUnSaved() const { return m_UnSaved; }
+        void SetUnSaved(const bool unSaved) { m_UnSaved = unSaved; }
+        
         static std::vector<std::shared_ptr<FsmTrigger>> CreateFromFile(const std::string& filePath);
         void UpdateFromFile(const std::string& filePath);
         void UpdateToFile(const std::string& oldId);
@@ -64,10 +125,11 @@ namespace LuaFsm
         TextEditor* GetActionEditor() { return &m_ActionEditor; }
         
         VisualNode* GetNode() { return &m_Node; }
-        [[nodiscard]] std::string MakeIdString(const std::string& name) const;
-        [[nodiscard]] ImVec2 GetPosition() { return m_Node.GetPosition(); }
+        [[nodiscard]] VisualNode GetNode() const { return m_Node; }
         VisualNode* DrawNode();
         void DrawProperties();
+        void CreateLastState();
+        bool IsChanged();
         void AppendToFile();
         
         std::string GetLuaCode();
@@ -84,6 +146,8 @@ namespace LuaFsm
         std::string m_NextStateId;
         std::string m_CurrentStateId;
         PopupManager m_PopupManager;
+        std::shared_ptr<FsmTrigger> m_PreviousState = nullptr;
+        bool m_UnSaved = false;
         FsmState* m_CurrentState = nullptr;
         FsmState* m_NextState = nullptr;
     };
