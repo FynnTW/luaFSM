@@ -655,7 +655,7 @@ namespace LuaFsm
     void OptionsPopUp::DrawFields()
     {
         ImGui::Checkbox("Append to file", &appendToFile);
-        ImGui::SetItemTooltip("If checked, the states and conditions will be appended to the linked file.\nIf unchecked, the code will be copied to the clipboard.");
+        ImGui::SetItemTooltip("If checked, new states and conditions will be appended to the linked file.\nIf unchecked, the code will be copied to the clipboard.");
         ImGui::Checkbox("Show Priority", &showPriority);
         ImGui::SetItemTooltip("Show priority of conditions on the canvas.");
     }

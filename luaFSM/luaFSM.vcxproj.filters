@@ -24,13 +24,7 @@
     <ClInclude Include="src\Graphics\Window.h">
       <Filter>Graphics</Filter>
     </ClInclude>
-    <ClInclude Include="src\Graphics\stb_image.h">
-      <Filter>Graphics</Filter>
-    </ClInclude>
     <ClInclude Include="src\IO\FileReader.h">
-      <Filter>IO</Filter>
-    </ClInclude>
-    <ClInclude Include="src\IO\LuaParser.h">
       <Filter>IO</Filter>
     </ClInclude>
     <ClInclude Include="src\Log.h" />
@@ -63,6 +57,11 @@
     </ClInclude>
     <ClInclude Include="src\luaFsm.h" />
     <ClInclude Include="src\pch.h" />
+    <ClInclude Include="src\imgui\fa_solid_900.h" />
+    <ClInclude Include="src\imgui\IconsFontAwesome6.h" />
+    <ClInclude Include="src\imgui\ImGuiNotify.hpp" />
+    <ClInclude Include="src\imgui\popups\Popup.h" />
+    <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Graphics\Math.cpp">
@@ -74,13 +73,7 @@
     <ClCompile Include="src\Graphics\Window.cpp">
       <Filter>Graphics</Filter>
     </ClCompile>
-    <ClCompile Include="src\Graphics\stb_image.cpp">
-      <Filter>Graphics</Filter>
-    </ClCompile>
     <ClCompile Include="src\IO\FileReader.cpp">
-      <Filter>IO</Filter>
-    </ClCompile>
-    <ClCompile Include="src\IO\LuaParser.cpp">
       <Filter>IO</Filter>
     </ClCompile>
     <ClCompile Include="src\Log.cpp" />
@@ -113,5 +106,12 @@
     </ClCompile>
     <ClCompile Include="src\luaFSM.cpp" />
     <ClCompile Include="src\pch.cpp" />
+    <ClCompile Include="src\imgui\popups\Popup.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="luaFSM.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="C:\Users\fynnp\Documents\state-machine-icon.ico" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,6 @@
 ﻿#include "pch.h"
 #include "Window.h"
+#include "stb_image.h"
 #include "imgui/ImGuiImpl.h"
 #include "imgui.h"
 #include "imgui/imgui_stdlib.h"
@@ -69,6 +70,17 @@ namespace LuaFsm
         }
         
         m_Window = glfwCreateWindow(static_cast<int>(props.width), static_cast<int>(props.height), props.title.c_str(), nullptr, nullptr);
+
+        if (FileReader::FileExists("luaFSM.png"))
+        {
+            int width, height, channels;
+            const auto img = stbi_load("luaFSM.png", &width, &height, &channels, 4);
+            GLFWimage images[1];
+            images[0].width = width;
+            images[0].height = height;
+            images[0].pixels = img;
+            glfwSetWindowIcon(m_Window, 1, images);
+        }
         
         glfwSetWindowUserPointer(m_Window, &m_Data);
         SetVSync(true);
