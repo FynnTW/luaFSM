@@ -58,7 +58,7 @@ namespace LuaFsm
         {
             if (ImGuiFileDialog::Instance()->IsOk()) { // action if 
                 *folder = ImGuiFileDialog::Instance()->GetCurrentPath();
-                *filePath = *folder + "/";
+                *filePath = *folder + "\\";
                 *filePath += ImGuiFileDialog::Instance()->GetCurrentFileName();
                 if (ext == ".lua")
                 {

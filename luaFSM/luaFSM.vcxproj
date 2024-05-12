@@ -90,6 +90,9 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>IF EXIST $(ProjectDir)assets\ (xcopy /Q /E /Y /I $(ProjectDir)assets $(TargetDir)\assets &gt; nul) ELSE (xcopy /Q /Y /I $(ProjectDir)assets $(TargetDir)\assets &gt; nul)</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -112,6 +115,9 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
+    <PostBuildEvent>
+      <Command>IF EXIST $(ProjectDir)assets\ (xcopy /Q /E /Y /I $(ProjectDir)assets $(TargetDir)\assets &gt; nul) ELSE (xcopy /Q /Y /I $(ProjectDir)assets $(TargetDir)\assets &gt; nul)</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Dist|x64'">
     <ClCompile>
@@ -134,28 +140,30 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
+    <PostBuildEvent>
+      <Command>IF EXIST $(ProjectDir)assets\ (xcopy /Q /E /Y /I $(ProjectDir)assets $(TargetDir)\assets &gt; nul) ELSE (xcopy /Q /Y /I $(ProjectDir)assets $(TargetDir)\assets &gt; nul)</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
     <ClInclude Include="src\Graphics\Math.h" />
-    <ClInclude Include="src\Graphics\stb_image.h" />
     <ClInclude Include="src\Graphics\VisualNode.h" />
     <ClInclude Include="src\Graphics\Window.h" />
-    <ClInclude Include="src\imgui\fa_solid_900.h" />
-    <ClInclude Include="src\imgui\IconsFontAwesome6.h" />
-    <ClInclude Include="src\imgui\ImGuiNotify.hpp" />
-    <ClInclude Include="src\imgui\popups\Popup.h" />
+    <ClInclude Include="src\Graphics\stb_image.h" />
     <ClInclude Include="src\IO\FileReader.h" />
     <ClInclude Include="src\Log.h" />
     <ClInclude Include="src\data\DrawableObject.h" />
     <ClInclude Include="src\data\FSM.h" />
     <ClInclude Include="src\data\FsmState.h" />
     <ClInclude Include="src\data\FsmTrigger.h" />
+    <ClInclude Include="src\imgui\IconsFontAwesome6.h" />
     <ClInclude Include="src\imgui\ImFileDialog.h" />
     <ClInclude Include="src\imgui\ImGuiImpl.h" />
     <ClInclude Include="src\imgui\NodeEditor.h" />
     <ClInclude Include="src\imgui\TextEditor.h" />
+    <ClInclude Include="src\imgui\fa_solid_900.h" />
     <ClInclude Include="src\imgui\imgui_stdlib.h" />
+    <ClInclude Include="src\imgui\popups\Popup.h" />
     <ClInclude Include="src\luaFsm.h" />
     <ClInclude Include="src\pch.h" />
   </ItemGroup>
@@ -163,7 +171,6 @@
     <ClCompile Include="src\Graphics\Math.cpp" />
     <ClCompile Include="src\Graphics\VisualNode.cpp" />
     <ClCompile Include="src\Graphics\Window.cpp" />
-    <ClCompile Include="src\imgui\popups\Popup.cpp" />
     <ClCompile Include="src\IO\FileReader.cpp" />
     <ClCompile Include="src\Log.cpp" />
     <ClCompile Include="src\data\DrawableObject.cpp" />
@@ -175,6 +182,7 @@
     <ClCompile Include="src\imgui\NodeEditor.cpp" />
     <ClCompile Include="src\imgui\TextEditor.cpp" />
     <ClCompile Include="src\imgui\imgui_stdlib.cpp" />
+    <ClCompile Include="src\imgui\popups\Popup.cpp" />
     <ClCompile Include="src\luaFSM.cpp" />
     <ClCompile Include="src\pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
@@ -195,7 +203,7 @@
     <ResourceCompile Include="luaFSM.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="C:\Users\fynnp\Documents\state-machine-icon.ico" />
+    <Image Include="luaFSM.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

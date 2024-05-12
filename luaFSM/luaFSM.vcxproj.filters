@@ -13,6 +13,9 @@
     <Filter Include="imgui">
       <UniqueIdentifier>{0098A80F-6CAC-D0C0-352E-7420A101CDF1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="imgui\popups">
+      <UniqueIdentifier>{D6905828-C2F3-E7CC-6B79-208357BBB34F}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Graphics\Math.h">
@@ -22,6 +25,9 @@
       <Filter>Graphics</Filter>
     </ClInclude>
     <ClInclude Include="src\Graphics\Window.h">
+      <Filter>Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\stb_image.h">
       <Filter>Graphics</Filter>
     </ClInclude>
     <ClInclude Include="src\IO\FileReader.h">
@@ -40,6 +46,9 @@
     <ClInclude Include="src\data\FsmTrigger.h">
       <Filter>data</Filter>
     </ClInclude>
+    <ClInclude Include="src\imgui\IconsFontAwesome6.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
     <ClInclude Include="src\imgui\ImFileDialog.h">
       <Filter>imgui</Filter>
     </ClInclude>
@@ -52,15 +61,17 @@
     <ClInclude Include="src\imgui\TextEditor.h">
       <Filter>imgui</Filter>
     </ClInclude>
+    <ClInclude Include="src\imgui\fa_solid_900.h">
+      <Filter>imgui</Filter>
+    </ClInclude>
     <ClInclude Include="src\imgui\imgui_stdlib.h">
       <Filter>imgui</Filter>
     </ClInclude>
+    <ClInclude Include="src\imgui\popups\Popup.h">
+      <Filter>imgui\popups</Filter>
+    </ClInclude>
     <ClInclude Include="src\luaFsm.h" />
     <ClInclude Include="src\pch.h" />
-    <ClInclude Include="src\imgui\fa_solid_900.h" />
-    <ClInclude Include="src\imgui\IconsFontAwesome6.h" />
-    <ClInclude Include="src\imgui\ImGuiNotify.hpp" />
-    <ClInclude Include="src\imgui\popups\Popup.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
@@ -104,14 +115,16 @@
     <ClCompile Include="src\imgui\imgui_stdlib.cpp">
       <Filter>imgui</Filter>
     </ClCompile>
+    <ClCompile Include="src\imgui\popups\Popup.cpp">
+      <Filter>imgui\popups</Filter>
+    </ClCompile>
     <ClCompile Include="src\luaFSM.cpp" />
     <ClCompile Include="src\pch.cpp" />
-    <ClCompile Include="src\imgui\popups\Popup.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="luaFSM.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="C:\Users\fynnp\Documents\state-machine-icon.ico" />
+    <Image Include="luaFSM.ico" />
   </ItemGroup>
 </Project>

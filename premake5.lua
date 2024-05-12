@@ -58,6 +58,12 @@ project "luaFSM"
         "GLFW",
         "glad",
     }
+
+    postbuildcommands
+    {
+        "{COPY} %{prj.location}assets/ %{cfg.buildtarget.directory}/assets/",
+    }
+
     filter "configurations:Debug"
         defines "LUAFSM_DEBUG"
         runtime "Debug"
