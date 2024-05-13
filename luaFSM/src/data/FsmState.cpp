@@ -215,6 +215,7 @@ namespace LuaFsm
             onExit = match[1].str();
         SetOnExit(FileReader::RemoveStartingTab(onExit));
         UpdateEditors();
+        CreateLastState();
         m_UnSaved = false;
     }
 
@@ -252,6 +253,11 @@ namespace LuaFsm
             code = std::regex_replace(code, regex, fmt::format("{0}.name = \"{1}\"", m_Id, m_Name));
         else if (!m_Name.empty())
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s name entry not found in file!", m_Id.c_str()});
+        regex = FsmRegex::ClassStringRegex(oldId, "id");
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("{0}.id = \"{1}\"", m_Id, m_Id));
+        else
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "state id entry not found in file!"});
         regex = FsmRegex::ClassStringRegex(oldId, "description");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.description = \"{1}\"", m_Id, m_Description));
@@ -307,45 +313,48 @@ namespace LuaFsm
                 code = std::regex_replace(code, regex, fmt::format("{0}.color = {{{1}, {2}, {3}, {4}}}", m_Id, color.Value.x, color.Value.y, color.Value.z, color.Value.w));
             }
         }
-        regex = FsmRegex::FunctionBodyReplace(oldId, "onEnter");
-        if (std::smatch match; std::regex_search(code, match, regex))
+        if (!NodeEditor::Get()->FunctionEditorOnly())
         {
-            std::string func;
-            for (const auto& line : m_OnEnterEditor.GetTextLines())
-                func += fmt::format("\t{0}\n", line);
-            code = std::regex_replace(code, regex, "$1\n" + func + "$3");
-            auto regexString = fmt::format("({0}:onEnter)", oldId);
-            regex = std::regex(regexString);
-            code = std::regex_replace(code, regex, fmt::format("{0}:onEnter", m_Id));
+            regex = FsmRegex::FunctionBodyReplace(oldId, "onEnter");
+            if (std::smatch match; std::regex_search(code, match, regex))
+            {
+                std::string func;
+                for (const auto& line : m_OnEnterEditor.GetTextLines())
+                    func += fmt::format("\t{0}\n", line);
+                code = std::regex_replace(code, regex, "$1\n" + func + "$3");
+                auto regexString = fmt::format("({0}:onEnter)", oldId);
+                regex = std::regex(regexString);
+                code = std::regex_replace(code, regex, fmt::format("{0}:onEnter", m_Id));
+            }
+            else if (!m_OnEnter.empty())
+                ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s onEnter entry not found in file!", m_Id.c_str()});
+            regex = FsmRegex::FunctionBodyReplace(oldId, "onUpdate");
+            if (std::smatch match; std::regex_search(code, match, regex))
+            {
+                std::string func;
+                for (const auto& line : m_OnUpdateEditor.GetTextLines())
+                    func += fmt::format("\t{0}\n", line);
+                code = std::regex_replace(code, regex, "$1\n" + func + "$3");
+                auto regexString = fmt::format("({0}:onUpdate)", oldId);
+                regex = std::regex(regexString);
+                code = std::regex_replace(code, regex, fmt::format("{0}:onEnter", m_Id));
+            }
+            else if (!m_OnUpdate.empty())
+                ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s onUpdate entry not found in file!", m_Id.c_str()});
+            regex = FsmRegex::FunctionBodyReplace(oldId, "onExit");
+            if (std::smatch match; std::regex_search(code, match, regex))
+            {
+                std::string func;
+                for (const auto& line : m_OnExitEditor.GetTextLines())
+                    func += fmt::format("\t{0}\n", line);
+                code = std::regex_replace(code, regex, "$1\n" + func + "$3");
+                auto regexString = fmt::format("({0}:onExit)", oldId);
+                regex = std::regex(regexString);
+                code = std::regex_replace(code, regex, fmt::format("{0}:onEnter", m_Id));
+            }
+            else if (!m_OnExit.empty())
+                ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s onExit entry not found in file!", m_Id.c_str()});
         }
-        else if (!m_OnEnter.empty())
-            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s onEnter entry not found in file!", m_Id.c_str()});
-        regex = FsmRegex::FunctionBodyReplace(oldId, "onUpdate");
-        if (std::smatch match; std::regex_search(code, match, regex))
-        {
-            std::string func;
-            for (const auto& line : m_OnUpdateEditor.GetTextLines())
-                func += fmt::format("\t{0}\n", line);
-            code = std::regex_replace(code, regex, "$1\n" + func + "$3");
-            auto regexString = fmt::format("({0}:onUpdate)", oldId);
-            regex = std::regex(regexString);
-            code = std::regex_replace(code, regex, fmt::format("{0}:onEnter", m_Id));
-        }
-        else if (!m_OnUpdate.empty())
-            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s onUpdate entry not found in file!", m_Id.c_str()});
-        regex = FsmRegex::FunctionBodyReplace(oldId, "onExit");
-        if (std::smatch match; std::regex_search(code, match, regex))
-        {
-            std::string func;
-            for (const auto& line : m_OnExitEditor.GetTextLines())
-                func += fmt::format("\t{0}\n", line);
-            code = std::regex_replace(code, regex, "$1\n" + func + "$3");
-            auto regexString = fmt::format("({0}:onExit)", oldId);
-            regex = std::regex(regexString);
-            code = std::regex_replace(code, regex, fmt::format("{0}:onEnter", m_Id));
-        }
-        else if (!m_OnExit.empty())
-            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s onExit entry not found in file!", m_Id.c_str()});
         m_UnSaved = false;
     }
 
@@ -575,6 +584,7 @@ namespace LuaFsm
         code += fmt::format("---@FSM_STATE {0}\n", m_Id);
         code += fmt::format("---@class {0} : FSM_STATE\n", m_Id);
         code += fmt::format("local {0} = FSM_STATE:new({{}})\n", m_Id);
+        code += fmt::format("{0}.id = \"{1}\"\n", m_Id, m_Id);
         code += fmt::format("{0}.name = \"{1}\"\n", m_Id, m_Name);
         code += fmt::format("{0}.description = \"{1}\"\n", m_Id, m_Description);
         std::string isExitState = m_IsExitState ? "true" : "false";
@@ -602,10 +612,10 @@ namespace LuaFsm
                 code += fmt::format("\t{0}\n", line);
             code += fmt::format("end---@endFunc\n");
         }
-        for (const auto& value : m_Triggers | std::views::values)
-        {
-            code += value->GetLuaCode() + "\n";
-        }
+        //for (const auto& value : m_Triggers | std::views::values)
+        //{
+        //    code += value->GetLuaCode() + "\n";
+        //}
         return code;
     }
     

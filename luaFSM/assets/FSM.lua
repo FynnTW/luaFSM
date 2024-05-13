@@ -77,21 +77,28 @@ end
 function FSM:registerState(state)
     --State must have an ID
     if not state.id or state.id == "" then
-        return
+        FSM_LOG:log("state not valid")
+        return 
     end
     if not state.name or state.name == "" then state.name = state.id end
 
     --Create a new FSM_STATE object
     self.states[state.id] = FSM_STATE:new(state)
     self.states[state.id].FSM = self
+    FSM_LOG:log("registering state " .. state.id, FSM_LOG.logLevel.TRACE)
 end
 
 function FSM:setInitialState(stateId)
     if not stateId then return end
     local state = self.states[stateId]
-    if not state then return end
+    if not state then
+        FSM_LOG:log("State " .. stateId .. " not found") 
+        return 
+    end
     self.initialState = state
     self.currentState = state
+    FSM_LOG:log("Set initial state " .. state.id, FSM_LOG.logLevel.TRACE)
+    self.initialState:onEnter()
 end
 
 ------------------------------------------------
@@ -102,16 +109,33 @@ end
 ---@param ... unknown Variable arguments
 function FSM:onUpdate(...)
 
+    if not self.currentState then return end
+    
+    FSM_LOG:log("onUpdate: " .. self.currentState.id, FSM_LOG.logLevel.TRACE)
+
+    local oldId = self.currentState.id
+
     --Fire the onUpdate function of the current state, with variable arguments
     self.currentState:onUpdate(...)
 
+    if self.currentState.isExitState then
+        self:setInitialState(self.initialStateId)
+        return
+    end
+
     --Evaluate the triggers of the current state
     self.currentState:evaluateConditions()
+
+    if oldId ~= self.currentState.id then
+        self:onUpdate(...)
+    end
 end
 
 ---Change the state of the FSM
 ---@param newState FSM_STATE
 function FSM:changeState(newState)
+
+    FSM_LOG:log("Changed State to " .. newState.id, FSM_LOG.logLevel.TRACE)
 
     --Fire the onExit function of the current state
     if self.currentState then
@@ -259,14 +283,15 @@ end
 ---Register a trigger with a state
 ---@param condition FSM_CONDITION
 function FSM_STATE:registerCondition(condition)
-    if not condition.id then return end
+    if not condition.id then FSM_LOG:log("condition not valid") return end
 
     --Register the trigger with the state
     self.links[condition.id] = FSM_CONDITION:new(condition)
 
     --Set the current state of the trigger to this state
+    condition.currentStateId = self.id
     condition.currentState = self
-
+    FSM_LOG:log("registering conditon " .. condition.id, FSM_LOG.logLevel.TRACE)
 end
 
 ------------------------------------------------
@@ -332,9 +357,17 @@ FSM_CONDITION = {
     ---@type function
     condition = function(...) end,
 
+    ---Action that executes when the condition is true
+    ---@type function
+    action = function(...) end,
+
     ---ID of the next state
     ---@type string
     nextStateId = "",
+
+    inLineCurve = 0,
+    
+    outLineCurve = 0,
 
     ---ID of the current state
     ---@type string
@@ -355,8 +388,8 @@ FSM_CONDITION.__index = FSM_CONDITION
 ------------------------------------------------
 
 ---Constructor for FSM condition
----@param o FSM_CONDITION
----@return FSM_CONDITION
+---@param o table
+---@return FSM_CONDITION newObject
 function FSM_CONDITION:new(o)
     -- Make sure the fields are empty so they arent drawn from the metatable
     o = o or {
@@ -378,6 +411,7 @@ end
 ---Evaluate the condition
 ---@return boolean isTrue
 function FSM_CONDITION:evaluate()
+    FSM_LOG:log("Evaluating " .. self.id, FSM_LOG.logLevel.TRACE)
     --Evaluate the condition of the condition
     return self:condition()
 end
@@ -426,6 +460,8 @@ FSM_LOG = {
         "ERROR"
     },
 
+    enabled = false,
+
     currentLevel = 2
 }
 
@@ -433,6 +469,7 @@ FSM_LOG = {
 ---@param path string Path to where you want the log file to be.
 function FSM_LOG:start(path)
     self.logFile = io.open(path, "w+")
+    self.enabled = true
 end
 
 ---Set the logging level
@@ -445,6 +482,8 @@ end
 ---@param text any
 ---@param level? integer
 function FSM_LOG:log(text, level)
+    if not self.enabled then return end
+    if not self.logFile then return end
     level = level or 1
     if level < self.currentLevel then return end
 

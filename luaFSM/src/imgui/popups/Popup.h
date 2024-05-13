@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "imgui/ImFileDialog.h"
+#include "imgui/NodeEditor.h"
 
 namespace LuaFsm
 {
@@ -186,6 +187,7 @@ namespace LuaFsm
         explicit OptionsPopUp();
         bool appendToFile = true;
         bool showPriority = false;
+        bool functionEditorOnly = false;
         void DrawFields() override;
         void DrawButtons() override;
     };

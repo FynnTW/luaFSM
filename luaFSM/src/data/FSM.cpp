@@ -296,6 +296,11 @@ namespace LuaFsm
         regex = FsmRegex::IdRegexClassDeclaration("FSM", oldId);
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0} = FSM:new", m_Id));
+        regex = FsmRegex::ClassStringRegex(oldId, "id");
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("{0}.id = \"{1}\"", m_Id, m_Id));
+        else
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm id entry not found in file!"});
         regex = FsmRegex::ClassStringRegex(oldId, "name");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.name = \"{1}\"", m_Id, m_Name));
@@ -332,7 +337,7 @@ namespace LuaFsm
         if (m_InitialStateId.empty())
             code += fmt::format("\tself:setInitialState(self.initialStateId)\n");
         else
-            code += fmt::format("\tself:setInitialState({0})\n", m_InitialStateId);
+            code += fmt::format("\tself:setInitialState(\"{0}\")\n", m_InitialStateId);
         code += fmt::format("end\n");
         return code;
     }
@@ -360,6 +365,7 @@ namespace LuaFsm
         code += fmt::format("---@FSM {0}\n", m_Id);
         code += fmt::format("---@class {0} : FSM\n", m_Id);
         code += fmt::format("{0} = FSM:new({{}})\n", m_Id);
+        code += fmt::format("{0}.id = \"{1}\"\n", m_Id, m_Id);
         code += fmt::format("{0}.name = \"{1}\"\n", m_Id, m_Name);
         code += fmt::format("{0}.initialStateId = \"{1}\"\n\n", m_Id, m_InitialStateId);
         code += GetActivateFunctionCode();
@@ -372,14 +378,16 @@ namespace LuaFsm
         if (code.empty())
             return nullptr;
         std::string id;
-        std::regex regex = FsmRegex::IdRegex("FSM");
+        const std::regex regex = FsmRegex::IdRegex("FSM");
         if (std::smatch match; std::regex_search(code, match, regex))
             id = match[1].str();
         else
+        {
+            ImGui::InsertNotification({ImGuiToastType::Error, 3000, "Not a valid FSM lua file: %s", filePath.c_str()});
             return nullptr;
+        }
         auto fsm = std::make_shared<Fsm>(id);
         NodeEditor::Get()->SetCurrentFsm(fsm);
-        NodeEditor::Get()->DeselectAllNodes();
         for (const auto states = FsmState::CreateFromFile(filePath); const auto& state : states)
             fsm->AddState(state);
         for (const auto conditions = FsmTrigger::CreateFromFile(filePath); const auto& condition : conditions)

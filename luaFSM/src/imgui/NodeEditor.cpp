@@ -133,6 +133,8 @@ namespace LuaFsm
             FileReader::lastPath = settings["defaultPath"];
         if (settings.contains("defaultTheme"))
             Window::SetTheme(settings["defaultTheme"]);
+        if (settings.contains("functionEditorOnly"))
+            m_FunctionEditorOnly = settings["functionEditorOnly"];
     }
 
     nlohmann::json NodeEditor::SerializeSettings() const
@@ -142,6 +144,7 @@ namespace LuaFsm
         settings["showPriority"] = m_ShowPriority;
         settings["defaultPath"] = FileReader::lastPath;
         settings["defaultTheme"] = Window::GetActiveTheme();
+        settings["functionEditorOnly"] = m_FunctionEditorOnly;
         return settings;
     }
 

@@ -96,6 +96,7 @@ namespace LuaFsm
         code += fmt::format("---@FSM_CONDITION {0}\n", m_Id);
         code += fmt::format("---@class {0} : FSM_CONDITION\n", m_Id);
         code += fmt::format("local {0} = FSM_CONDITION:new({{}})\n", m_Id);
+        code += fmt::format("{0}.id = \"{1}\"\n", m_Id, m_Id);
         code += fmt::format("{0}.name = \"{1}\"\n", m_Id, m_Name);
         code += fmt::format("{0}.description = \"{1}\"\n", m_Id, m_Description);
         code += fmt::format("{0}.editorPos = {{{1}, {2}}}\n", m_Id, m_Node.GetGridPos().x, m_Node.GetGridPos().y);
@@ -140,6 +141,11 @@ namespace LuaFsm
         regex = FsmRegex::IdRegexClassDeclaration("FSM_CONDITION", oldId);
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0} = FSM_CONDITION:new", m_Id));
+        regex = FsmRegex::ClassStringRegex(oldId, "id");
+        if (std::smatch match; std::regex_search(code, match, regex))
+            code = std::regex_replace(code, regex, fmt::format("{0}.id = \"{1}\"", m_Id, m_Id));
+        else
+            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "condition id entry not found in file!"});
         regex = FsmRegex::ClassStringRegex(oldId, "name");
         if (std::smatch match; std::regex_search(code, match, regex))
             code = std::regex_replace(code, regex, fmt::format("{0}.name = \"{1}\"", m_Id, m_Name));
@@ -219,32 +225,35 @@ namespace LuaFsm
         else if (m_Node.GetOutArrowCurve() > 0.0001f || m_Node.GetOutArrowCurve() < 0.0001f)
             ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm condition %s outLineCurve entry not found in file!", m_Id.c_str()});
 
-        regex = FsmRegex::FunctionBodyReplace(oldId, "condition");
-        if (std::smatch match; std::regex_search(code, match, regex))
+        if (!NodeEditor::Get()->FunctionEditorOnly())
         {
-            std::string func;
-            for (const auto& line : m_ConditionEditor.GetTextLines())
-                func += fmt::format("\t{0}\n", line);
-            code = std::regex_replace(code, regex, "$1\n" + func + "$3");
-            auto regexString = fmt::format("({0}:condition)", oldId);
-            regex = std::regex(regexString);
-            code = std::regex_replace(code, regex, fmt::format("{0}:condition", m_Id));
+            regex = FsmRegex::FunctionBodyReplace(oldId, "condition");
+            if (std::smatch match; std::regex_search(code, match, regex))
+            {
+                std::string func;
+                for (const auto& line : m_ConditionEditor.GetTextLines())
+                    func += fmt::format("\t{0}\n", line);
+                code = std::regex_replace(code, regex, "$1\n" + func + "$3");
+                auto regexString = fmt::format("({0}:condition)", oldId);
+                regex = std::regex(regexString);
+                code = std::regex_replace(code, regex, fmt::format("{0}:condition", m_Id));
+            }
+            else if (!m_Condition.empty())
+                ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s condition entry not found in file!", m_Id.c_str()});
+            regex = FsmRegex::FunctionBodyReplace(oldId, "action");
+            if (std::smatch match; std::regex_search(code, match, regex))
+            {
+                std::string func;
+                for (const auto& line : m_ActionEditor.GetTextLines())
+                    func += fmt::format("\t{0}\n", line);
+                code = std::regex_replace(code, regex, "$1\n" + func + "$3");
+                auto regexString = fmt::format("({0}:action)", oldId);
+                regex = std::regex(regexString);
+                code = std::regex_replace(code, regex, fmt::format("{0}:action", m_Id));
+            }
+            else if (!m_Action.empty())
+                ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s action entry not found in file!", m_Id.c_str()});
         }
-        else if (!m_Condition.empty())
-            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s condition entry not found in file!", m_Id.c_str()});
-        regex = FsmRegex::FunctionBodyReplace(oldId, "action");
-        if (std::smatch match; std::regex_search(code, match, regex))
-        {
-            std::string func;
-            for (const auto& line : m_ActionEditor.GetTextLines())
-                func += fmt::format("\t{0}\n", line);
-            code = std::regex_replace(code, regex, "$1\n" + func + "$3");
-            auto regexString = fmt::format("({0}:action)", oldId);
-            regex = std::regex(regexString);
-            code = std::regex_replace(code, regex, fmt::format("{0}:action", m_Id));
-        }
-        else if (!m_Action.empty())
-            ImGui::InsertNotification({ImGuiToastType::Warning, 3000, "Fsm state %s action entry not found in file!", m_Id.c_str()});
         m_UnSaved = false;
     }
 
@@ -328,6 +337,7 @@ namespace LuaFsm
             action = match[1].str();
         SetAction(FileReader::RemoveStartingTab(action));
         UpdateEditors();
+        CreateLastState();
         m_UnSaved = false;
     }
 
@@ -442,8 +452,6 @@ namespace LuaFsm
         }
         m_Node.SetId(id);
     }
-
-#define COMPARE_COLOR(a, b) ((a).x - (b).x > 0.0001f || (a).y - (b).y > 0.0001f || (a).z - (b).z > 0.0001f || (a).w - (b).w > 0.0001f)
 
     void FsmTrigger::DrawProperties()
     {

@@ -241,6 +241,9 @@ namespace LuaFsm
         bool ShowPriority() const { return m_ShowPriority; }
         void SetShowPriority(const bool show) { m_ShowPriority = show; }
 
+        bool FunctionEditorOnly() const { return m_FunctionEditorOnly; }
+        void SetFunctionEditorOnly(const bool functionEditorOnly) { m_FunctionEditorOnly = functionEditorOnly; }
+
         ImVec2 GetDragOffset() const { return m_DragOffset; }
         void SetDragOffset(const ImVec2& offset) { m_DragOffset = offset; }
         
@@ -282,6 +285,7 @@ namespace LuaFsm
         float m_Scale = 1.0f;
         bool m_AppendStates = true;
         bool m_ShowPriority = false;
+        bool m_FunctionEditorOnly = false;
     };
     
 }

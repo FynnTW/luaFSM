@@ -650,6 +650,7 @@ namespace LuaFsm
     {
         appendToFile = NodeEditor::Get()->AppendStates();
         showPriority = NodeEditor::Get()->ShowPriority();
+        functionEditorOnly = NodeEditor::Get()->FunctionEditorOnly();
     }
 
     void OptionsPopUp::DrawFields()
@@ -658,6 +659,8 @@ namespace LuaFsm
         ImGui::SetItemTooltip("If checked, new states and conditions will be appended to the linked file.\nIf unchecked, the code will be copied to the clipboard.");
         ImGui::Checkbox("Show Priority", &showPriority);
         ImGui::SetItemTooltip("Show priority of conditions on the canvas.");
+        ImGui::Checkbox("Don't save function body", &functionEditorOnly);
+        ImGui::SetItemTooltip("Only edit function bodies in your text editor, never overwrite from the program.");
     }
 
     void OptionsPopUp::DrawButtons()
@@ -666,6 +669,7 @@ namespace LuaFsm
         {
             NodeEditor::Get()->SetAppendStates(appendToFile);
             NodeEditor::Get()->SetShowPriority(showPriority);
+            NodeEditor::Get()->SetFunctionEditorOnly(functionEditorOnly);
             NodeEditor::Get()->SaveSettings();
             Close();
         }
