@@ -1010,6 +1010,7 @@ namespace LuaFsm
             ImGui::Text("F4 - Load from file");
             ImGui::Text("F5 - Save to file");
             ImGui::Text("Ctrl + S - Save (Selected node)");
+            ImGui::Text("Middle mouse click on state/condition in property pages lists - Go to node in canvas");
             ImGui::Separator();
             ImGui::Text("Canvas:");
             ImGui::Separator();
@@ -1023,6 +1024,8 @@ namespace LuaFsm
             ImGui::Text("Hold right mouse from node - Start link");
             ImGui::Text("Release on another node - Create connection");
             ImGui::Text("Release on empty canvas space - Create node");
+            ImGui::Separator();
+            ImGui::Text("Various elements have right click context menu's, including the canvas.");
             ImGui::Separator();
             ImGui::Text("Help:");
             ImGui::TextWrapped(R"(

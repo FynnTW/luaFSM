@@ -136,9 +136,13 @@ namespace LuaFsm
                     {
                         ImGui::SetItemTooltip(fmt::format("{0}\n{1}", state->GetName(), state->GetDescription()).c_str());
                         if (ImGui::IsItemClicked())
-                            NodeEditor::Get()->MoveToNode(m_InitialStateId, NodeType::State);
+                            NodeEditor::Get()->SetSelectedNode(state->GetNode());
                         if (ImGui::IsItemHovered())
+                        {
                             state->GetNode()->SetIsHighlighted(true);
+                            if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
+                                NodeEditor::Get()->MoveToNode(m_InitialStateId, NodeType::State);
+                        }
                         else
                             state->GetNode()->SetIsHighlighted(false);
                     }
@@ -179,9 +183,15 @@ namespace LuaFsm
                         ImGui::Selectable(label.c_str(), false);
                         ImGui::SetItemTooltip(fmt::format("{0}\n{1}", value->GetName(), value->GetDescription()).c_str());
                         if (ImGui::IsItemClicked())
-                            NodeEditor::Get()->MoveToNode(key, NodeType::State);
+                        {
+                            NodeEditor::Get()->SetSelectedNode(value->GetNode());
+                        }
                         if (ImGui::IsItemHovered())
+                        {
                             NodeEditor::Get()->GetNode(key, NodeType::State)->SetIsHighlighted(true);
+                            if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
+                                NodeEditor::Get()->MoveToNode(key, NodeType::State);
+                        }
                         else
                             NodeEditor::Get()->GetNode(key, NodeType::State)->SetIsHighlighted(false);
                         ImGui::Separator();
@@ -211,11 +221,17 @@ namespace LuaFsm
                         ImGui::Selectable(label.c_str(), false);
                         ImGui::SetItemTooltip(fmt::format("{0}\n{1}", value->GetName(), value->GetDescription()).c_str());
                         if (ImGui::IsItemClicked())
-                            NodeEditor::Get()->MoveToNode(key, NodeType::Transition);
+                        {
+                            NodeEditor::Get()->SetSelectedNode(value->GetNode());
+                        }
                         if (ImGui::IsItemHovered())
-                            NodeEditor::Get()->GetNode(key, NodeType::Transition)->SetIsHighlighted(true);
+                        {
+                            value->GetNode()->SetIsHighlighted(true);
+                            if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
+                                NodeEditor::Get()->MoveToNode(key, NodeType::Transition);
+                        }
                         else
-                            NodeEditor::Get()->GetNode(key, NodeType::Transition)->SetIsHighlighted(false);
+                            value->GetNode()->SetIsHighlighted(false);
                         ImGui::Separator();
                     }
                     ImGui::EndListBox();
@@ -326,18 +342,26 @@ namespace LuaFsm
     std::string Fsm::GetActivateFunctionCode()
     {
         std::string code;
-        code += fmt::format("\n---Activate this FSM\n");
+        code += fmt::format("\n--Example function of enabling the FSM\n");
+        code += fmt::format("---Activate this FSM\n");
         code += fmt::format("function {0}:activate()\n", m_Id);
+        code += fmt::format("\t--If you want logging uncomment\n");
+        code += fmt::format("\t--if not FSM_LOG.enabled then\n");
+        code += fmt::format("\t--\tFSM_LOG:start(\"fsm_log.log\")\n");
+        code += fmt::format("\t--\tFSM_LOG:setLevel(FSM_LOG.logLevel.TRACE)\n");
+        code += fmt::format("\t--end\n");
         for (const auto& [key, state] : m_States)
         {
             for (const auto& [id, trigger] : state->GetTriggers())
                 code += fmt::format("\t{0}:registerCondition({1})\n", state->GetId(), id);
             code += fmt::format("\tself:registerState({0})\n", key);
         }
+        code += fmt::format("\n\tif not self.currentState then\n");
         if (m_InitialStateId.empty())
-            code += fmt::format("\tself:setInitialState(self.initialStateId)\n");
+            code += fmt::format("\t\tself:setInitialState(self.initialStateId)\n");
         else
-            code += fmt::format("\tself:setInitialState(\"{0}\")\n", m_InitialStateId);
+            code += fmt::format("\t\tself:setInitialState(\"{0}\")\n", m_InitialStateId);
+        code += fmt::format("\tend\n");
         code += fmt::format("end\n");
         return code;
     }
@@ -362,6 +386,7 @@ namespace LuaFsm
     std::string Fsm::GetLuaCode()
     {
         std::string code;
+        code += fmt::format("--require(\"FSM\")\n\n");
         code += fmt::format("---@FSM {0}\n", m_Id);
         code += fmt::format("---@class {0} : FSM\n", m_Id);
         code += fmt::format("{0} = FSM:new({{}})\n", m_Id);

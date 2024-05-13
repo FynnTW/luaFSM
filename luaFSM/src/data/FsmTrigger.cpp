@@ -522,10 +522,12 @@ namespace LuaFsm
                     ImGui::Selectable(MakeIdString(m_CurrentStateId).c_str(), false);
                     ImGui::SetItemTooltip(fmt::format("{0}\n{1}", currentState->GetName(), currentState->GetDescription()).c_str());
                     if (ImGui::IsItemClicked())
-                        NodeEditor::Get()->MoveToNode(m_CurrentStateId, NodeType::State);
+                        NodeEditor::Get()->SetSelectedNode(currentState->GetNode());
                     if (ImGui::IsItemHovered())
                     {
                         currentState->GetNode()->SetIsHighlighted(true);
+                        if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
+                            NodeEditor::Get()->MoveToNode(m_CurrentStateId, NodeType::State);
                         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                         {
                             m_PopupManager.GetPopup<UnlinkStatePopup>(TriggerPopups::UnlinkCurrentState)->stateId = m_CurrentStateId;
@@ -543,10 +545,12 @@ namespace LuaFsm
                     ImGui::Selectable(MakeIdString(m_NextStateId).c_str(), false);
                     ImGui::SetItemTooltip(fmt::format("{0}\n{1}", nextState->GetName(), nextState->GetDescription()).c_str());
                     if (ImGui::IsItemClicked())
-                        NodeEditor::Get()->MoveToNode(m_NextStateId, NodeType::State);
+                        NodeEditor::Get()->SetSelectedNode(nextState->GetNode());
                     if (ImGui::IsItemHovered())
                     {
                         nextState->GetNode()->SetIsHighlighted(true);
+                        if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
+                            NodeEditor::Get()->MoveToNode(m_NextStateId, NodeType::State);
                         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                         {
                             m_PopupManager.GetPopup<UnlinkStatePopup, TriggerPopups>(TriggerPopups::UnlinkNextState)->stateId = m_NextStateId;

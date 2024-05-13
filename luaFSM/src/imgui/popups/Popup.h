@@ -1,7 +1,6 @@
 ﻿#pragma once
 
 #include "imgui/ImFileDialog.h"
-#include "imgui/NodeEditor.h"
 
 namespace LuaFsm
 {

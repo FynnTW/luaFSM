@@ -457,7 +457,7 @@ namespace LuaFsm
                             ImGui::Selectable(MakeIdString(label).c_str(), false);
                             ImGui::SetItemTooltip(fmt::format("{0}\n{1}", trigger->GetName(), trigger->GetDescription()).c_str());
                             if (ImGui::IsItemClicked())
-                                NodeEditor::Get()->MoveToNode(key, NodeType::Transition);
+                                NodeEditor::Get()->SetSelectedNode(trigger->GetNode());
                             if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                             {
                                 m_PopupManager.GetPopup<UnlinkTriggerPopup>(StatePopups::UnlinkTrigger)->triggerId = key;
@@ -466,6 +466,8 @@ namespace LuaFsm
                             if (ImGui::IsItemHovered())
                             {
                                 trigger->GetNode()->SetIsHighlighted(true);
+                                if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
+                                    NodeEditor::Get()->MoveToNode(key, NodeType::Transition);
                                 if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
                                 {
                                     m_PopupManager.GetPopup<UnlinkTriggerPopup>(StatePopups::UnlinkTrigger)->triggerId = key;
