@@ -205,15 +205,15 @@ namespace LuaFsm
         std::regex onEnterRegex = FsmRegex::FunctionBody(m_Id, "onEnter");
         if (std::smatch match; std::regex_search(code, match, onEnterRegex))
             onEnter = match[1].str();
-        SetOnEnter(onEnter);
+        SetOnEnter(FileReader::RemoveStartingTab(onEnter));
         std::string onUpdate;
         if (std::smatch match; std::regex_search(code, match, FsmRegex::FunctionBody(m_Id, "onUpdate")))
             onUpdate = match[1].str();
-        SetOnUpdate(onUpdate);
+        SetOnUpdate(FileReader::RemoveStartingTab(onUpdate));
         std::string onExit;
         if (std::smatch match; std::regex_search(code, match, FsmRegex::FunctionBody(m_Id, "onExit")))
             onExit = match[1].str();
-        SetOnExit(onExit);
+        SetOnExit(FileReader::RemoveStartingTab(onExit));
         UpdateEditors();
         m_UnSaved = false;
     }

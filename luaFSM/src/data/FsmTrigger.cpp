@@ -322,11 +322,11 @@ namespace LuaFsm
         std::string condition = "return false";
         if (std::smatch match; std::regex_search(code, match, FsmRegex::FunctionBody(m_Id, "condition")))
             condition = match[1].str();
-        SetCondition(condition);
+        SetCondition(FileReader::RemoveStartingTab(condition));
         std::string action;
         if (std::smatch match; std::regex_search(code, match, FsmRegex::FunctionBody(m_Id, "action")))
             action = match[1].str();
-        SetAction(action);
+        SetAction(FileReader::RemoveStartingTab(action));
         UpdateEditors();
         m_UnSaved = false;
     }

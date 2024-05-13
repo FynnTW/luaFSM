@@ -1,6 +1,8 @@
 ﻿#include "pch.h"
 #include "FileReader.h"
 
+#include <regex>
+
 #include "Log.h"
 #include "imgui/ImGuiNotify.hpp"
 
@@ -297,21 +299,7 @@ namespace LuaFsm
 
     std::string FileReader::RemoveStartingTab(const std::string& input)
     {
-        std::istringstream iss(input);
-        std::ostringstream oss;
-        std::string line;
-
-        while (std::getline(iss, line)) {
-            // Check if the line starts with a tab and remove it
-            if (!line.empty() && line[0] == '\t') {
-                line.erase(0, 1);  // Erase the first character if it's a tab
-            }
-            oss << line;
-            if (!iss.eof()) {
-                oss << '\n';  // Add newline back except for the last line
-            }
-        }
-
-        return oss.str();
+        const std::regex startLineWhite(R"(^((?:\t|    )))");
+        return std::regex_replace(input, startLineWhite, "");
     }
 }

@@ -132,8 +132,16 @@ namespace LuaFsm
                 {
                     ImGui::SameLine();
                     ImGui::Selectable(m_InitialStateId.c_str(), false);
-                    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-                        NodeEditor::Get()->MoveToNode(m_InitialStateId, NodeType::State);
+                    if (const auto state = GetState(m_InitialStateId))
+                    {
+                        ImGui::SetItemTooltip(fmt::format("{0}\n{1}", state->GetName(), state->GetDescription()).c_str());
+                        if (ImGui::IsItemClicked())
+                            NodeEditor::Get()->MoveToNode(m_InitialStateId, NodeType::State);
+                        if (ImGui::IsItemHovered())
+                            state->GetNode()->SetIsHighlighted(true);
+                        else
+                            state->GetNode()->SetIsHighlighted(false);
+                    }
                 }
                 ImGui::Separator();
                 ImGui::Text("Linked Lua File: ");

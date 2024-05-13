@@ -98,7 +98,6 @@ namespace LuaFsm
         Application::Get()->Close();
     }
     
-    IM_MSVC_RUNTIME_CHECKS_OFF
     void Window::InitImGui()
     {
         InitThemes();
@@ -112,7 +111,7 @@ namespace LuaFsm
         io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
         io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-        //io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
             style.WindowRounding = 0.0f;
@@ -182,7 +181,6 @@ namespace LuaFsm
         //Popups
         InitializePopups();
     }
-    IM_MSVC_RUNTIME_CHECKS_RESTORE
 
     void Window::InitializePopups()
     {
@@ -724,13 +722,6 @@ namespace LuaFsm
             MOUSE_SCROLL = 0;
             return;
         }
-        
-        //Save Ctrl + S
-        if (ImGui::IsKeyPressed(ImGuiKey_S) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
-        {
-            if (!nodeEditor->GetCurrentFsm()->GetLinkedFile().empty())
-                nodeEditor->GetCurrentFsm()->UpdateToFile(NodeEditor::Get()->GetCurrentFsm()->GetId());
-        }
 
         //Zoom Ctrl + Mouse Scroll
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
@@ -958,19 +949,42 @@ namespace LuaFsm
             
             //show fsm properties
             if (nodeEditor->ShowFsmProps())
+            {
                 fsm->DrawProperties();
+                //Save Ctrl + S
+                if (ImGui::IsKeyPressed(ImGuiKey_S) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+                {
+                    fsm->UpdateToFile(fsm->GetId());
+                }
+            }
             //show selected node properties
             else if (selectedNode)
             {
                 if (nodeType == NodeType::State)
                 {
                     if (const auto state = fsm->GetState(selectedNode->GetId()))
+                    {
                         state->DrawProperties();
+            
+                        //Save Ctrl + S
+                        if (ImGui::IsKeyPressed(ImGuiKey_S) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+                        {
+                            state->UpdateToFile(state->GetId());
+                        }
+                    }
                 }
                 else if (nodeType == NodeType::Transition)
                 {
                     if (const auto trigger = fsm->GetTrigger(selectedNode->GetId()))
+                    {
                         trigger->DrawProperties();
+            
+                        //Save Ctrl + S
+                        if (ImGui::IsKeyPressed(ImGuiKey_S) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+                        {
+                            trigger->UpdateToFile(trigger->GetId());
+                        }
+                    }
                 }
             }
             else //if no selected nodes show fsm properties
@@ -995,12 +1009,13 @@ namespace LuaFsm
             ImGui::Separator();
             ImGui::Text("F4 - Load from file");
             ImGui::Text("F5 - Save to file");
+            ImGui::Text("Ctrl + S - Save (Selected node)");
             ImGui::Separator();
             ImGui::Text("Canvas:");
             ImGui::Separator();
             ImGui::Text("Middle mouse (hold) - Pan Canvas");
             ImGui::Text("Ctrl + mouse scroll - Zoom Canvas");
-            ImGui::Text("Ctrl + S - Save");
+            ImGui::Text("Double click left mouse - Deselect nodes/Show FSM properties");
             ImGui::Text("Ctrl + C - Copy node");
             ImGui::Text("Ctrl + V - Paste node");
             ImGui::Text("Linking:");

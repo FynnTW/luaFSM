@@ -400,3 +400,59 @@ end
 function FSM_CONDITION:debug()
     print(inspect(self))
 end
+
+
+
+------------------------------------------------
+-- LOGGING
+------------------------------------------------
+
+FSM_LOG = {
+    ---@type file*
+    logFile = nil,
+    
+    ---@enum logLevel
+    logLevel = {
+        TRACE = 1,
+        INFO = 2,
+        WARNING = 3,
+        ERROR = 4
+    },
+
+    logLevelStrings = {
+        "TRACE",
+        "INFO",
+        "WARNING",
+        "ERROR"
+    },
+
+    currentLevel = 2
+}
+
+---Start the log file.
+---@param path string Path to where you want the log file to be.
+function FSM_LOG:start(path)
+    self.logFile = io.open(path, "w+")
+end
+
+---Set the logging level
+---@param level logLevel
+function FSM_LOG:setLevel(level)
+    self.currentLevel = level
+end
+
+---Log something to the log. 
+---@param text any
+---@param level? integer
+function FSM_LOG:log(text, level)
+    level = level or 1
+    if level < self.currentLevel then return end
+
+    local printText = "[" .. self.logLevelStrings[level] .. "]" .. "[" .. os.date() .. "] -> <" .. tostring(text) .. ">\n"
+    self.logFile:write(printText)
+    self.logFile:flush()
+end
+
+
+
+
